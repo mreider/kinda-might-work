@@ -1,7 +1,6 @@
 .stack-work
-secrets.json
-
-
+app.key
+private.json
 
 
 
