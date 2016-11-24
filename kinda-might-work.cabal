@@ -19,9 +19,14 @@ executable kinda-might-work-exe
   main-is:             Main.hs
   other-modules:       DB
                      , PageTemplate
+                     , WithSession
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       aeson
                      , base
+                     , binary
+                     , profunctors
+                     , cookie
+                     , http-types
                      , lens
                      , lucid
                      , persistent

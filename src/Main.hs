@@ -2,27 +2,30 @@ module Main where
 
 import           DB
 import           PageTemplate
+import           WithSession
 
-import           Protolude
 import           Data.Aeson
+import           Data.UUID
+import           Network.Wai                  (Application)
+import           Network.Wai.Handler.Warp     (run,setPort,defaultSettings)
+import           Network.Wai.Handler.WarpTLS
+import           Protolude
 import           Servant.API
 import           Servant.Client
 import           Servant.HTML.Lucid
 import           Servant.Server
-import           Network.Wai                  (Application)
-import           Network.Wai.Handler.Warp     (run,setPort,defaultSettings)
-import           Network.Wai.Handler.WarpTLS
-
-
-
-type KindaMightWork_API =     GoogleCallback 
-                        :<|>  TrelloCallback
-                        :<|>  WunderlistCallback
-                        :<|>  LogOut
-                        :<|>  RemoveTrello
-                        :<|>  RemoveWunder
-                        :<|>  SyncTrelloWunder
-                        :<|>  IndexPage
+import           System.Random
+--------------------------------------------------------------------------
+type KindaMightWork_API = WithSession "kmw_session" 
+                        :> (     GoogleCallback
+                           :<|>  TrelloCallback
+                           :<|>  WunderlistCallback
+                           :<|>  LogOut
+                           :<|>  RemoveTrello
+                           :<|>  RemoveWunder
+                           :<|>  SyncTrelloWunder
+                           :<|>  IndexPage
+                           )     
 
 
 type GoogleCallback     = "go-clb" :> Get [HTML,JSON] Page
@@ -32,39 +35,53 @@ type LogOut             = "go-out" :> Get [HTML,JSON] Page
 type RemoveTrello       = "tr-out" :> Get [HTML,JSON] Page
 type RemoveWunder       = "wl-out" :> Get [HTML,JSON] Page
 type SyncTrelloWunder   = "sync"   :> Get [HTML,JSON] Page
-
 type IndexPage          =             Get [HTML,JSON] Page   
-
+---------------------------------------------------------------------------
 
 {-
-<html>
-  <head>
-    <meta name="google-site-verification" content="auj20bE8W7nWGXthtzXrkuv4f4u6-VXZ9fQBNLefIlo" />
-    <title> My title </title>
-  </head> 
-  <body>
-    page contents
-  </body>
-</html>
-
+Request { requestMethod = "GET"
+        , httpVersion = HTTP/2.0
+        , rawPathInfo = "/"
+        , rawQueryString = ""
+        , requestHeaders = [ ("Host","localhost")
+                           , ("User-Agent","Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:50.0) Gecko/20100101 Firefox/50.0")
+                           , ("Accept","text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                           , ("Accept-Language","en-US,en;q=0.5")
+                           , ("Accept-Encoding","gzip, deflate, br")
+                           , ("upgrade-insecure-requests","1")
+                           , ("Cache-Control","max-age=0")
+                           ]
+        , isSecure = True
+        , remoteHost = 127.0.0.1:50134
+        , pathInfo = []
+        , queryString = []
+        , requestBody = <IO ByteString>
+        , vault = <Vault>
+        , requestBodyLength = KnownLength 0
+        , requestHeaderHost = Just "localhost"
+        , requestHeaderRange = Nothing}
 -}
 
 
-api :: Proxy KindaMightWork_API
+
+api :: Proxy (KindaMightWork_API)
 api = Proxy
 
 
 server :: PubCred -> PrivCred -> Server KindaMightWork_API
-server PubCred{..} PrivCred{..} =    landPage
-                                :<|> landPage
-                                :<|> landPage
-                                :<|> landPage
-                                :<|> landPage
-                                :<|> landPage
-                                :<|> landPage
-                                :<|> landPage
+server PubCred{..} PrivCred{..} session =    landPage
+                                        :<|> landPage
+                                        :<|> landPage
+                                        :<|> landPage
+                                        :<|> landPage
+                                        :<|> landPage
+                                        :<|> landPage
+                                        :<|> landPage
   where
-    landPage = return (LandingPage, site_verification)
+    landPage = return Page{ client_id    = google_client_id
+                          , verification = site_verification
+                          , csrf_token   = session
+                          } 
 
 
 data PubCred = PubCred
@@ -80,7 +97,6 @@ data PrivCred   = PrivCred
 main :: IO ()
 main = do pub_conf  <- decode.toSL <$> readFile pub_file
           priv_conf <- decode.toSL <$> readFile priv_file
-          
           case (pub_conf,priv_conf) of
 
             (Nothing , _        ) -> putStrLn $ "Could not parse: "<> pub_file
@@ -91,7 +107,6 @@ main = do pub_conf  <- decode.toSL <$> readFile pub_file
                                           . debuging 
                                           . serve api 
                                           $ server pub priv
-
  where
 
     pub_file  = "conf/public.json"
@@ -103,10 +118,7 @@ main = do pub_conf  <- decode.toSL <$> readFile pub_file
 
 
 debuging :: Application -> Application
-debuging app req cont = print req >> app req cont
-
-
-
-
-
+debuging app req cont = do print req 
+                           putStrLn ("\n-----------------------------------------------------\n"::Text)
+                           app req cont
 
