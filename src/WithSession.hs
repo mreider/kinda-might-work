@@ -51,6 +51,7 @@ instance
 
 -- TODO: refactor
 -- also add requests header
+-- TODO: factor this out into a library...
 
 settingCookie :: Text -> RoutingApplication -> RoutingApplication
 settingCookie c original req cont = do let (cookies, content) = extract c req
