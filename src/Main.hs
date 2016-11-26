@@ -1,22 +1,16 @@
 module Main where
-
---import           Conf
---import           DB
---import           OAuth
---import           PageTemplate
---import           Profile
---import           WithSession  
+  
 import           Server
-import           Servant.Server
 import           DB
+import           API
 
+import           Data.Aeson
 import           Network.Wai                  (Application)
 import           Network.Wai.Handler.Warp     (setPort,defaultSettings)
 import           Network.Wai.Handler.WarpTLS
-import           Data.Aeson
 import           Protolude                  hiding(to,get)
+import           Servant.Server
 --------------------------------------------------------------------------
-
 
 main :: IO ()
 main = do pub_conf  <- decode.toSL <$> readFile pub_file

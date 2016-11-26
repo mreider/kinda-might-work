@@ -2,10 +2,12 @@
 module Server where
 
 import           Conf 
+import           API
 import           Profile
 import           WithSession
 import           OAuth
 import           Synchro
+import           TokenCSFR
 
 import           WebPage
 import           Protolude      
@@ -14,49 +16,7 @@ import           Servant.Server
 import           Data.UUID
 import           Data.Aeson
 import           DB
-import           Servant.HTML.Lucid
 import           Control.Lens
-
-type KindaMightWork_API = WithSession "kmw_session" 
-                        :> (     GoogleCallback
-                           :<|>  TrelloCallback
-                           :<|>  WuListCallback
-                           :<|>  LogOut
-                           :<|>  RemoveTrello
-                           :<|>  RemoveWunder
-                           :<|>  SyncTrelloWunder
-                           :<|>  IndexPage
-                           )     
-
-
--- TODO: use redirects for post
--- TODO: use redirects for Oauth loggin
--- TODO: pages should indicate the opration result
-type GoogleCallback     = "go-clb" :> QueryParam "code"       Text
-                                   :> Get        [HTML,JSON]  WebPage
-
-type TrelloCallback     = "tr-clb" :> QueryParam "code"       Text
-                                   :> Get        [HTML,JSON]  WebPage
-
-type WuListCallback     = "wl-clb" :> QueryParam "code"       Text
-                                   :> Get        [HTML,JSON]  WebPage
-
-type LogOut             = "go-out" :> Post       [HTML,JSON]  WebPage
-
-type RemoveTrello       = "tr-out" :> Capture    "csfr-token" Session
-                                   :> Post       [HTML,JSON]  WebPage
-
-type RemoveWunder       = "wl-out" :> Capture    "csfr-token" Session
-                                   :> Post       [HTML,JSON]  WebPage
-
-type SyncTrelloWunder   = "sync"   :> Capture    "csfr-token" Session
-                                   :> Post       [HTML,JSON]  WebPage
-
-type IndexPage          =             Get        [HTML,JSON]  WebPage   
----------------------------------------------------------------------------
-
-api :: Proxy (KindaMightWork_API)
-api = Proxy
 
 
 ---------------------------------------------------------------------------
@@ -85,7 +45,7 @@ server (creds,secret) session =    callback (set withGoogle) _googleCred
       where
         partial x = setter (Just x) blankProfile
 
-    generatePage     = return . webPage session (creds,secret)
+    generatePage     = return . webPage (csfrChallenge (csfrSecret secret) session) creds
     
 
     remove  service csfr = do checkTokenCSFR session secret csfr
@@ -115,7 +75,7 @@ server (creds,secret) session =    callback (set withGoogle) _googleCred
 
 
 
-checkTokenCSFR :: Session -> PrivCred -> UUID -> ExceptT ServantErr IO () 
+checkTokenCSFR :: UUID -> PrivCred -> TokenCSFR -> ExceptT ServantErr IO () 
 checkTokenCSFR = undefined
 
 

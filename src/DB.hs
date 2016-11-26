@@ -10,7 +10,7 @@ module DB where
 import           Conf
 import           Data.Aeson
 import           Data.Time
-import           Data.UUID
+import           Orphan.UUID
 import           GHC.Generics
 import           Database.Persist
 import           Database.Persist.Sqlite
