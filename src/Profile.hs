@@ -8,11 +8,12 @@ import           DB
 import           Conf
 import           OAuth
 
-import           Synchro
-import           Protolude          hiding (get)
+import           Control.Lens       hiding (get)
+import           Control.Monad.Trans.Maybe
 import           Data.Aeson
 import           Database.Persist
-import           Control.Lens       hiding (get)
+import           Protolude          hiding (get)
+import           Synchro
 -- TODO: use better names and explain what each module do!
 -- Maybe call this module "Account"??
 -- use tha neme account somewhere
@@ -63,23 +64,33 @@ getUpdateProfile creds s p = transaction $ do
                                            )
   where
     
-    extractGoogle  :: io (Maybe (GoogleProfile,EmailId))
-    extractGoogle  = undefined
-    
+    extractGoogle  :: (MonadIO io) => io (Maybe (GoogleProfile,EmailId))
+    extractGoogle  = transaction . runMaybeT
+                   $ do Link  kEmail <- MaybeT $ get (LinkKey s)
+                        Email name   <- MaybeT $ get kEmail
+                        
+                        return ( GoogleProfile (unEmailKey kEmail)
+                                               name
+                               , kEmail
+                               )
+    -- TODO: it does not refresh the refresh token.
+    --      needs  an extra  parameter
+    updateService  :: (MonadIO io) => EmailId -> Service -> Maybe a 
+                                   -> (Creds -> Subscription -> io (Maybe a)) 
+                                   -> io (Maybe a)
 
-    updateService  :: EmailId -> Service -> Maybe a 
-                   -> (Creds -> Subscription -> io (Maybe a)) 
-                   -> io (Maybe a)
-    
-    updateService  = undefined
+    updateService k s _ f = runMaybeT
+                          $ do sub <- MaybeT . transaction $ get (SubscriptionKey k s)
+                               MaybeT $ f creds sub
 
-    extractService :: EmailId -> Service -> io (Maybe Subscription)
-    extractService = undefined
+    extractService :: (MonadIO io) => EmailId -> Service -> io (Maybe Subscription)
+    extractService k s = transaction $ get (SubscriptionKey k s)
 
 
-    updateGoogle   :: GoogleProfile -> io ()
-    updateGoogle   = undefined
-
+    updateGoogle   :: (MonadIO io) => GoogleProfile -> io ()
+    updateGoogle (GoogleProfile email name)  = transaction 
+                                             $ do repsert (EmailKey email) (Email name)
+                                                  repsert (LinkKey  s)     (Link $ EmailKey email)
 
 
     PartialProfile{..} = p

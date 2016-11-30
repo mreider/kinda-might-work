@@ -74,9 +74,9 @@ server (creds,secret) session =    callback (set withGoogle) _googleCred
 
 
 
-
+-- TODO: implement
 checkTokenCSFR :: UUID -> PrivCred -> TokenCSFR -> ExceptT ServantErr IO () 
-checkTokenCSFR = undefined
+checkTokenCSFR _ _ _ = return ()
 
 
 

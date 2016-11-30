@@ -52,7 +52,7 @@ instance ToHtml WebPage where
                 
                   meta_ [name_    "google-site-verification", content_ verification]
                   meta_ [charset_ "UTF-8"]
-                  meta_ [title_   "Kinda might work" ]
+                  meta_ [title_   "Kinda Might Work" ]
                 
                 body_ body
 
