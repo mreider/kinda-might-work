@@ -4,7 +4,7 @@ module Server where
 import           Conf 
 import           API
 import           Profile
-import           WithSession
+import           Servant.WithSession
 import           OAuth
 import           Synchro
 import           TokenCSFR

@@ -18,14 +18,17 @@ executable kinda-might-work-exe
   hs-source-dirs:      src
   main-is:             Main.hs
 
-  other-modules:       DB
+  other-modules:       API
                      , Conf
+                     , DB
                      , OAuth
                      , Orphan.UUID
-                     , PageTemplate
                      , Profile
-                     , TokenCSFR
-                     , WithSession
+                     , Server
+                     , Synchro
+                     , TokenCSFR 
+                     , WebPage
+
 
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       aeson
@@ -52,6 +55,7 @@ executable kinda-might-work-exe
                      , servant-client
                      , servant-lucid
                      , servant-server
+                     , servant-simple-cookie-session
                      , text
                      , time
                      , transformers

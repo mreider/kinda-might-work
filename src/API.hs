@@ -3,7 +3,7 @@
 
 module API where
 
-import           WithSession
+import           Servant.WithSession
 import           Servant
 import           Servant.HTML.Lucid
 import           Protolude

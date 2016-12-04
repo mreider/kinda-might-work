@@ -2,6 +2,10 @@
 resolver: lts-7.10
 packages:
 - '.'
+- location:
+    git:    https://github.com/vwwv/servant-simple-cookie-session.git
+    commit: a96a06d26afef95e8afc4bff160bb961f64bc71b
+
 extra-deps: []
 
 flags: {}
