@@ -20,15 +20,15 @@ data WuListProfile = WuListProfile
 
 
 syncTrelloWuList :: (MonadIO io) => Creds -> TrelloProfile -> WuListProfile -> io ()
-syncTrelloWuList = undefined
+syncTrelloWuList = error "error at syncTrelloWuList"
 
 
 -- use refresh!
 
 trelloSubscription :: (MonadIO io) => Creds -> Subscription -> io (Maybe TrelloProfile)
-trelloSubscription = undefined
+trelloSubscription = error "error at trelloSubscription"
 
 
 wuListSubscription :: (MonadIO io) => Creds -> Subscription -> io (Maybe WuListProfile)
-wuListSubscription = undefined
+wuListSubscription = error "error at wuListSubscription"
 

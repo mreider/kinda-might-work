@@ -49,7 +49,7 @@ Subscription
 
 type Transaction a = ReaderT SqlBackend (NoLoggingT (ResourceT IO)) a
 
-dbConnector = ":memory:"
+dbConnector = "db.sqlite"
 
 transaction :: (MonadIO io) => Transaction a -> io a
 transaction =  liftIO . runSqlite dbConnector

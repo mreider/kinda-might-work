@@ -21,18 +21,18 @@ import           Control.Lens
 
 ---------------------------------------------------------------------------
 server :: Creds -> Server KindaMightWork_API
-server (creds,secret) session =    callback (set withGoogle) _googleCred
-                              :<|> callback (set withTrello) _trelloCred
-                              :<|> callback (set withWuList) _wuListCred 
-                              :<|> (loggingOut session >> generatePage Nothing)
-                              :<|> remove Trello
-                              :<|> remove WuList
-                              :<|> syncTrelloWunder
-                              :<|> indexPage
+server creds session =    callback (set withGoogle) _googleCred
+                     :<|> callback (set withTrello) _trelloCred
+                     :<|> callback (set withWuList) _wuListCred 
+                     :<|> (loggingOut session >> generatePage Nothing)
+                     :<|> remove Trello
+                     :<|> remove WuList
+                     :<|> syncTrelloWunder
+                     :<|> indexPage
   where
 
     callback :: (FromJSON r) => ( Maybe r -> PartialProfile -> PartialProfile)
-                             -> (PubCred  -> OAuthCred)
+                             -> (Creds  -> OAuthCred)
                              -> Maybe Text
                              -> ExceptT ServantErr IO WebPage
     
@@ -45,21 +45,21 @@ server (creds,secret) session =    callback (set withGoogle) _googleCred
       where
         partial x = setter (Just x) blankProfile
 
-    generatePage     = return . webPage (csfrChallenge (csfrSecret secret) session) creds
+    generatePage     = return . webPage (csfrChallenge (_csfrSecret creds) session) creds
     
 
-    remove  service csfr = do checkTokenCSFR session secret csfr
+    remove  service csfr = do checkTokenCSFR session creds csfr
                               removeService  session service
                               indexPage
                                
     
-    syncTrelloWunder  csfr = do checkTokenCSFR session secret csfr
+    syncTrelloWunder  csfr = do checkTokenCSFR session creds csfr
                                 profile <- updateProfile session blankProfile
                                 case profile of
                                   Just ( _
                                        , Just trello 
                                        , Just wuList
-                                       )             -> syncTrelloWuList (creds,secret)  
+                                       )             -> syncTrelloWuList creds 
                                                                          trello wuList
                                   Nothing            -> return () -- not logged
 
@@ -70,12 +70,12 @@ server (creds,secret) session =    callback (set withGoogle) _googleCred
 
     blankProfile     = PartialProfile Nothing Nothing Nothing
     
-    updateProfile    = getUpdateProfile (creds,secret)
+    updateProfile    = getUpdateProfile creds
 
 
 
 -- TODO: implement
-checkTokenCSFR :: UUID -> PrivCred -> TokenCSFR -> ExceptT ServantErr IO () 
+checkTokenCSFR :: UUID -> Creds -> TokenCSFR -> ExceptT ServantErr IO () 
 checkTokenCSFR _ _ _ = return ()
 
 

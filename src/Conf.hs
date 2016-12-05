@@ -1,4 +1,5 @@
 
+{-# LANGUAGE UndecidableInstances #-}
 
 
 module Conf where
@@ -19,31 +20,26 @@ data Service   = Trello | WuList
                    deriving (Show,Eq,Ord,Read,Generic,FromJSON,ToJSON)
 
 
-type Creds         = (PubCred, PrivCred)
-
-data PrivCred      = PrivCred
-      { googleSecret      :: Text
-      , trelloSecret      :: Text
-      , wuListSecret      :: Text
-      , csfrSecret        :: Text
-      } deriving(Show,Read,Eq,Ord,Generic,ToJSON,FromJSON)
-
-data OAuthCred     = OAuthCred
+data OAuthCred  = OAuthCred
       { _clientId         :: Text
-      , _authUrl          :: Text
+      , _authDomain       :: Text
+      , _authPath         :: Text
       , _uriRedirect      :: Text
       , _scope            :: Text
-      }  deriving(Show,Read,Eq,Ord,Generic,ToJSON,FromJSON)
+      , _secret           :: Text
+      } deriving(Show,Eq,Ord,Read,Generic,FromJSON,ToJSON)
 
-data PubCred       = PubCred
+data Creds = Creds
       { _siteVerification :: Text
+      , _csfrSecret       :: Text
       , _googleCred       :: OAuthCred
       , _trelloCred       :: OAuthCred
       , _wuListCred       :: OAuthCred
-      } deriving(Show,Read,Eq,Ord,Generic,ToJSON,FromJSON)
+      } deriving(Show,Eq,Ord,Read,Generic,FromJSON,ToJSON)
 
 
-$(makeLenses ''PubCred       )
+
+$(makeLenses ''Creds         )
 $(makeLenses ''OAuthCred     )
 
 derivePersistField "Service"

@@ -55,33 +55,34 @@ type KindaMightWork_API = WithSession "kmw_session"
 -- TODO: use redirects for Oauth loggin
 -- TODO: pages should indicate the opration result
 type GoogleCallback     = "go-clb" :> QueryParam "code"       Text
-                                   :> Get        [HTML,JSON]  WebPage
+                                   :> Get        '[HTML]      WebPage
                                    --  :> Get Redirect home
 
 type TrelloCallback     = "tr-clb" :> QueryParam "code"       Text
-                                   :> Get        [HTML,JSON]  WebPage
+                                   :> Get        '[HTML]      WebPage
                                    --  :> Get Redirect home
 
 type WuListCallback     = "wl-clb" :> QueryParam "code"       Text
-                                   :> Get        [HTML,JSON]  WebPage
+                                   :> Get        '[HTML]      WebPage
                                    --  :> Get Redirect home
 
-type LogOut             = "go-out" :> Post       [HTML,JSON]  WebPage
+-- TODO: use post when needed, use redirect
+type LogOut             = "go-out" :> Get        '[HTML]      WebPage
                                    -- :> type Redirect home
 
 type RemoveTrello       = "tr-out" :> Capture    "csfr-token" TokenCSFR
-                                   :> Post       [HTML,JSON]  WebPage
+                                   :> Get        '[HTML]      WebPage
                                    -- :> Post Redirect home
 
 type RemoveWunder       = "wl-out" :> Capture    "csfr-token" TokenCSFR
-                                   :> Post       [HTML,JSON]  WebPage
+                                   :> Get        '[HTML]      WebPage
                                    -- :> Post Redirect home
 
 type SyncTrelloWunder   = "sync"   :> Capture    "csfr-token" TokenCSFR
-                                   :> Post       [HTML,JSON]  WebPage
+                                   :> Get        '[HTML]      WebPage
                                    -- :> Post Redirect home
 
-type IndexPage          =             Get        [HTML,JSON]  WebPage   
+type IndexPage          =             Get        '[HTML]      WebPage   
 ---------------------------------------------------------------------------
 
 data Redirec -- TODO: Implement 
@@ -106,7 +107,7 @@ data WebPage = WebPage
       , google_conf   :: OAuthCred
       , csrf_token    :: TokenCSFR
       , innerPage     :: Maybe InnerPage
-      } deriving(Show,Read,Eq,Ord,Generic,ToJSON)
+      }
 
 -- | Page content after user has logged
 data InnerPage = InnerPage
@@ -117,15 +118,15 @@ data InnerPage = InnerPage
       , wuList_conf   :: OAuthCred
       , userEmail     :: Text
       , outOfSync     :: [Text]
-      } deriving(Show,Read,Eq,Ord,Generic,ToJSON)
+      }
 
 
-webPage :: TokenCSFR -> PubCred -> Profile -> WebPage 
-webPage token PubCred{..} prof =  WebPage{ google_conf  = _googleCred 
-                                         , verification = _siteVerification
-                                         , csrf_token   = token
-                                         , ..
-                                         }
+webPage :: TokenCSFR -> Creds -> Profile -> WebPage
+webPage token Creds{..} prof =  WebPage{ google_conf  = _googleCred 
+                                       , verification = _siteVerification
+                                       , csrf_token   = token
+                                       , ..
+                                       }
    where
     innerPage = case prof of
 

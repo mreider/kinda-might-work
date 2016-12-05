@@ -4,7 +4,7 @@ module OAuth where
 
 import           Conf
 import           DB
-import           Servant.Server (ServantErr)
+import           Servant.Server
 
 
 import           Data.Map
@@ -13,57 +13,58 @@ import           Data.Aeson.Lens
 import           Data.UUID
 import           Protolude             hiding(to)
 import           Network.Wreq
-import qualified Web.JWT                    as JWT
 import           Control.Lens
-
+import qualified Data.Text              as T
+import qualified Data.ByteString.Base64 as B
+import           Control.Monad.Fail
 
 -- TODO: Change the name of this
 data GoogleProfile = GoogleProfile
       { email :: Text
       , name  :: Text
-      } deriving(Show,Read,Eq,Ord,Generic,ToJSON,FromJSON) 
+      } deriving(Show,Read,Eq,Ord,Generic) 
 
 
 
 refresh        :: Creds -> Service -> Subscription -> ExceptT ServantErr IO (Maybe ())
-refresh        = undefined
+refresh        = error "OAuth.hs at A"
 
 postCode       :: (FromJSON r) => OAuthCred -> Text -> ExceptT ServantErr IO r
-postCode       = undefined
+postCode  auth code     = do result <- liftIO $ postCode' auth code
+                             print "::::::::::::::::::::::::::::::::::::::::::::::::::"
+                             print result
+                             print "::::::::::::::::::::::::::::::::::::::::::::::::::"
+                             case  result ^? _Right . responseBody . key "id_token" .to fromJSON of
+                              Just (Success r) -> return   r
+                              _                -> throwError err401
+
 
 postCode'      :: OAuthCred -> Text ->  IO (Either SomeException (Response LByteString))
-postCode'      = undefined
-              --( PubCred{..}
-              --, PrivCred{..}
-              --) code         = try $ post "https://www.googleapis.com/oauth2/v4/token" 
-              --                        [ "code"          := code
-              --                        , "redirect_uri"  := google_redirect
-              --                        , "client_id"     := google_client_id
-              --                        , "client_secret" := google_secret
-              --                        , "scope"         := google_scope
-              --                        , "grant_type"    := ("authorization_code" :: Text)
-              --                        , "access_type"   := ("online"             :: Text) -- we just need the email once and we are done.
-              --                        ]
+postCode' OAuthCred{..} code = try $ post "https://www.googleapis.com/oauth2/v4/token"
+                                      [ "code"          := code
+                                      , "redirect_uri"  := _uriRedirect
+                                      , "client_id"     := _clientId
+                                      , "client_secret" := _secret
+                                      , "scope"         := _scope
+                                      , "grant_type"    := ("authorization_code" :: Text)
+                                      , "access_type"   := ("online"             :: Text) -- we just need the email once and we are done.
+                                      ]
+
+instance FromJSON GoogleProfile where
+  
+  parseJSON (String t) = let profile = do  t'    <- rightToMaybe . B.decode . toSL 
+                                                  . T.takeWhile (/='.') . T.drop 1 . T.dropWhile (/='.')
+                                                  $ t
+
+                                           name  <- t' ^? key "name"  . _String
+                                           email <- t' ^? key "email" . _String
+                                           return GoogleProfile{..}
+
+                          in maybe (fail "could not parse google profile" ) return profile
 
 
+  parseJSON x          = fail $ "unexpected value: "<> show x
 
-extractProfile :: Either SomeException (Response LByteString) -> Maybe (UUID, GoogleProfile)
-extractProfile x =  do valueMap <- x ^? _Right . responseBody 
-                                               .  key "id_token"
-                                               . _String
-                                               .  to JWT.decode 
-                                               . _Just 
-                                               . to (JWT.unregisteredClaims . JWT.claims) 
-                       
-                       profile  <- (,) <$> (fromJSON<$>lookup "email" valueMap) 
-                                       <*> (fromJSON<$>lookup "name"  valueMap)
-                       
-                       case profile of
-                        (Success a,Success b) -> Just (undefined, GoogleProfile a b)
-                        _                     -> Nothing
-
---checkParseResp :: SessionCred -> Maybe (UUID, a) -> ExceptT ServantErr IO a
---checkParseResp = undefined
 
 
 

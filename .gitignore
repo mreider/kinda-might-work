@@ -1,8 +1,8 @@
 .stack-work
 app.key
 private.json
-
-
+public.json
+*.sqlite
 
 
 

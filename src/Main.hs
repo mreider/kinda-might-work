@@ -14,22 +14,18 @@ import           Servant.Server
 
 main :: IO ()
 main = do pub_conf  <- decode.toSL <$> readFile pub_file
-          priv_conf <- decode.toSL <$> readFile priv_file
           migrate
-          case (pub_conf,priv_conf) of
+          case pub_conf of
 
-            (Nothing , _        ) -> putStrLn $ "Could not parse: "<> pub_file
+            Nothing  -> putStrLn $ "Could not parse: "<> pub_file
             
-            (_       , Nothing  ) -> putStrLn $ "Could not parse: "<> priv_file
-
-            (Just pub, Just priv) -> runTLS tls setttings
-                                          . debuging 
-                                          . serve api 
-                                          $ server (pub, priv)
+            Just pub -> runTLS tls setttings
+                             . debuging 
+                             . serve api 
+                             $ server pub
  where
 
     pub_file  = "conf/public.json"
-    priv_file = "conf/private.json"
 
     tls       = tlsSettings "conf/app.crt" "conf/app.key"
     setttings = defaultSettings & setPort port
@@ -38,6 +34,6 @@ main = do pub_conf  <- decode.toSL <$> readFile pub_file
 
 debuging :: Application -> Application
 debuging app req cont = do print req 
-                           putStrLn ("\n-----------------------------------------------------\n"::Text)
+                           putStrLn ("\n------------------------------------------------------\n"::Text)
                            app req cont
 
