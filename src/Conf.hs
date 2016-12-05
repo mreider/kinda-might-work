@@ -23,6 +23,7 @@ data Service   = Trello | WuList
 data OAuthCred  = OAuthCred
       { _clientId         :: Text
       , _authDomain       :: Text
+      , _verifyURL        :: Text
       , _authPath         :: Text
       , _uriRedirect      :: Text
       , _scope            :: Text
