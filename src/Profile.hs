@@ -26,7 +26,7 @@ data PartialProfile = PartialProfile
       , _withTrello :: Maybe TrelloProfile
       , _withWuList :: Maybe WuListProfile
       } deriving (Show,Read,Eq)
-
+-- TODO, make a prism instead of a lens
 
 type Profile       = Maybe ( GoogleProfile
                            , Maybe TrelloProfile
@@ -39,11 +39,12 @@ $(makeLenses ''PartialProfile)
 -- TODO: refactor
 -- TODO: to its own module...
 -- TODO: better comments...
-getUpdateProfile :: (MonadIO io) => Creds
+getUpdateProfile :: (MonadIO io) => DB
+                                 -> Creds
                                  -> Session
                                  -> PartialProfile
                                  -> io Profile
-getUpdateProfile creds s p = transaction $ do 
+getUpdateProfile db creds s p = transaction db $ do 
 
 
       mayProf <- case _withGoogle of
@@ -57,15 +58,17 @@ getUpdateProfile creds s p = transaction $ do
         Nothing        -> return Nothing
         
         Just (prof, k) -> do mayTrello <- updateService k Trello _withTrello trelloSubscription
+                             
                              mayWuList <- updateService k WuList _withWuList wuListSubscription
+                             
                              return $ Just ( prof
                                            , mayTrello
                                            , mayWuList
                                            )
   where
     
-    extractGoogle  :: (MonadIO io) => io (Maybe (GoogleProfile,EmailId))
-    extractGoogle  = transaction . runMaybeT
+    extractGoogle  :: Transaction (Maybe (GoogleProfile,EmailId))
+    extractGoogle = runMaybeT
                    $ do Link  kEmail <- MaybeT $ get (LinkKey s)
                         Email name   <- MaybeT $ get kEmail
                         
@@ -75,36 +78,35 @@ getUpdateProfile creds s p = transaction $ do
                                )
     -- TODO: it does not refresh the refresh token.
     --      needs  an extra  parameter
-    updateService  :: (MonadIO io) => EmailId -> Service -> Maybe a 
-                                   -> (Creds -> Subscription -> io (Maybe a)) 
-                                   -> io (Maybe a)
+    updateService  :: EmailId -> Service -> Maybe a 
+                   -> (Creds -> Subscription -> Transaction (Maybe a)) 
+                   -> Transaction (Maybe a)
 
     updateService k s _ f = runMaybeT
-                          $ do sub <- MaybeT . transaction $ get (SubscriptionKey k s)
-                               MaybeT $ f creds sub
+                             $ do sub <- MaybeT $ get (SubscriptionKey k s)
+                                  MaybeT $ f creds sub
 
-    extractService :: (MonadIO io) => EmailId -> Service -> io (Maybe Subscription)
-    extractService k s = transaction $ get (SubscriptionKey k s)
+    extractService :: EmailId -> Service -> Transaction (Maybe Subscription)
+    extractService k s =  get (SubscriptionKey k s)
 
 
-    updateGoogle   :: (MonadIO io) => GoogleProfile -> io ()
-    updateGoogle (GoogleProfile email name)  = transaction 
-                                             $ do repsert (EmailKey email) (Email name)
+    updateGoogle   :: GoogleProfile -> Transaction ()
+    updateGoogle  (GoogleProfile email name) = do repsert (EmailKey email) (Email name)
                                                   repsert (LinkKey  s)     (Link $ EmailKey email)
 
 
     PartialProfile{..} = p
 
-removeService    :: (MonadIO io) => Session -> Service -> io ()
-removeService s serv = transaction
-                     $ do result <- get (LinkKey s)
-                          case result of
-                            Nothing           -> return () -- user not logged...
-                            Just (Link email) -> delete (SubscriptionKey email serv)
+removeService    :: (MonadIO io) => DB -> Session -> Service -> io ()
+removeService db s serv = transaction db
+                        $ do result <- get (LinkKey s)
+                             case result of
+                                Nothing           -> return () -- user not logged...
+                                Just (Link email) -> delete (SubscriptionKey email serv)
 
 
-loggingOut       :: (MonadIO io) => Session            -> io ()
-loggingOut       = transaction . delete . LinkKey
+loggingOut       :: (MonadIO io) => DB -> Session            -> io ()
+loggingOut  db   = transaction db . delete . LinkKey
 
 
 

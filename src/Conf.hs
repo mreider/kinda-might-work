@@ -32,6 +32,7 @@ data OAuthCred  = OAuthCred
 
 data Creds = Creds
       { _siteVerification :: Text
+      , _postgresConn     :: Text
       , _csfrSecret       :: Text
       , _googleCred       :: OAuthCred
       , _trelloCred       :: OAuthCred

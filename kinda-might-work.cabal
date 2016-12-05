@@ -45,11 +45,12 @@ executable kinda-might-work-exe
                      , monad-logger
                      , path-pieces
                      , persistent
-                     , persistent-sqlite
+                     , persistent-postgresql
                      , persistent-template
                      , profunctors
                      , protolude
                      , random
+                     , resource-pool
                      , resourcet
                      , servant
                      , servant-client

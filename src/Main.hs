@@ -5,6 +5,7 @@ import           DB
 import           API
 
 import           Data.Aeson
+import           Conf                         (_postgresConn)          
 import           Network.Wai                  (Application)
 import           Network.Wai.Handler.Warp     (setPort,defaultSettings)
 import           Network.Wai.Handler.WarpTLS
@@ -13,19 +14,19 @@ import           Servant.Server
 --------------------------------------------------------------------------
 
 main :: IO ()
-main = do pub_conf  <- decode.toSL <$> readFile pub_file
-          migrate
-          case pub_conf of
+main = do raw_conf  <- decode.toSL <$> readFile conf_file
+          case raw_conf of
 
-            Nothing  -> putStrLn $ "Could not parse: "<> pub_file
+            Nothing   -> putStrLn $ "Could not parse: "<> conf_file
             
-            Just pub -> runTLS tls setttings
-                             . debuging 
-                             . serve api 
-                             $ server pub
+            Just conf -> do db <- getDB $ _postgresConn conf
+                            runTLS tls setttings
+                                 . debuging 
+                                 . serve api 
+                                 $ server db conf
  where
 
-    pub_file  = "conf/public.json"
+    conf_file  = "conf/public.json"
 
     tls       = tlsSettings "conf/app.crt" "conf/app.key"
     setttings = defaultSettings & setPort port

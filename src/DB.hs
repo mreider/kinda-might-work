@@ -8,16 +8,18 @@
 module DB where
 
 import           Conf
-import           Data.Aeson
-import           Data.Time
-import           Orphan.UUID
-import           GHC.Generics
-import           Database.Persist
-import           Database.Persist.Sqlite
-import           Database.Persist.TH
-import           Protolude
 import           Control.Monad.Logger
 import           Control.Monad.Trans.Resource
+import           Data.Aeson
+import           Data.Pool
+import           Data.Time
+import           Database.Persist
+import           Database.Persist.Postgresql
+import           Database.Persist.TH
+import           GHC.Generics
+import           Orphan.UUID
+import           Protolude
+
 
 type Session            = UUID
 
@@ -37,26 +39,40 @@ Link
 
 Subscription
    kind          Service
-   account       EmailId -- Foerign Key
+   account       EmailId  -- Foerign Key
    token         Text
-   refreshToken  Text
-   expires       UTCTime
+   refreshToken  Text     -- TODO remove
+   expires       UTCTime  -- TODO remove
    Primary       account  kind
    deriving      Show Eq Ord Read Generic
 |]
 
-
-
+data DB = DB (Pool SqlBackend)
 type Transaction a = ReaderT SqlBackend (NoLoggingT (ResourceT IO)) a
 
-dbConnector = "db.sqlite"
-
-transaction :: (MonadIO io) => Transaction a -> io a
-transaction =  liftIO . runSqlite dbConnector
 
 
+transaction :: (MonadIO io) => DB -> Transaction a -> io a
+transaction (DB pool) t =  liftIO (runSqlPersistMPool t pool)
 
-migrate :: IO ()
-migrate = runSqlite dbConnector $ runMigration migrateAll -- Once we are using views, we won't be able to use auto migrations :s
-           
+
+
+
+
+connections = 5
+
+
+getDB :: Text -> IO DB
+getDB conn = do pool <- fmap DB . runNoLoggingT  $ createPostgresqlPool (toSL conn) connections
+
+                transaction pool $ runMigration migrateAll
+                return pool
+
+
+
+
+
+
+
+
 

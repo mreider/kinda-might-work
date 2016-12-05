@@ -20,15 +20,15 @@ import           Control.Lens
 
 
 ---------------------------------------------------------------------------
-server :: Creds -> Server KindaMightWork_API
-server creds session =    callback (set withGoogle) _googleCred
-                     :<|> callback (set withTrello) _trelloCred
-                     :<|> callback (set withWuList) _wuListCred 
-                     :<|> (loggingOut session >> generatePage Nothing)
-                     :<|> remove Trello
-                     :<|> remove WuList
-                     :<|> syncTrelloWunder
-                     :<|> indexPage
+server :: DB -> Creds -> Server KindaMightWork_API
+server db creds session =    callback (set withGoogle) _googleCred
+                        :<|> callback (set withTrello) _trelloCred
+                        :<|> callback (set withWuList) _wuListCred 
+                        :<|> (loggingOut db session >> generatePage Nothing)
+                        :<|> remove Trello
+                        :<|> remove WuList
+                        :<|> syncTrelloWunder
+                        :<|> indexPage
   where
 
     callback :: (FromJSON r) => ( Maybe r -> PartialProfile -> PartialProfile)
@@ -48,8 +48,8 @@ server creds session =    callback (set withGoogle) _googleCred
     generatePage     = return . webPage (csfrChallenge (_csfrSecret creds) session) creds
     
 
-    remove  service csfr = do checkTokenCSFR session creds csfr
-                              removeService  session service
+    remove  service csfr = do checkTokenCSFR    session creds csfr
+                              removeService  db session service
                               indexPage
                                
     
@@ -70,7 +70,7 @@ server creds session =    callback (set withGoogle) _googleCred
 
     blankProfile     = PartialProfile Nothing Nothing Nothing
     
-    updateProfile    = getUpdateProfile creds
+    updateProfile    = getUpdateProfile db creds
 
 
 
