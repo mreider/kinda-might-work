@@ -57,9 +57,9 @@ getUpdateProfile db creds s p = transaction db $ do
 
         Nothing        -> return Nothing
         
-        Just (prof, k) -> do mayTrello <- updateService k Trello _withTrello trelloSubscription
+        Just (prof, k) -> do mayTrello <- return Nothing
                              
-                             mayWuList <- updateService k WuList _withWuList wuListSubscription
+                             mayWuList <- updateService WuListProfile k WuList (_wuListAccessToken<$>_withWuList)
                              
                              return $ Just ( prof
                                            , mayTrello
@@ -76,18 +76,18 @@ getUpdateProfile db creds s p = transaction db $ do
                                                name
                                , kEmail
                                )
-    -- TODO: it does not refresh the refresh token.
-    --      needs  an extra  parameter
-    updateService  :: EmailId -> Service -> Maybe a 
-                   -> (Creds -> Subscription -> Transaction (Maybe a)) 
-                   -> Transaction (Maybe a)
 
-    updateService k s _ f = runMaybeT
-                             $ do sub <- MaybeT $ get (SubscriptionKey k s)
-                                  MaybeT $ f creds sub
+    updateService :: (Text -> a) -> EmailId -> Service -> Maybe Text
+                    -> Transaction (Maybe a)
 
-    extractService :: EmailId -> Service -> Transaction (Maybe Subscription)
-    extractService k s =  get (SubscriptionKey k s)
+    updateService cons k serv may = case may of
+                                     Nothing    -> fmap (cons.subscriptionToken) <$> get key
+                                     Just tok   -> do repsert key (Subscription serv k tok)
+                                                      return $ Just (cons tok)
+         where
+          key = SubscriptionKey k serv
+
+
 
 
     updateGoogle   :: GoogleProfile -> Transaction ()

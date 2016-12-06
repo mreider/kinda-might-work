@@ -11,6 +11,8 @@ import           Network.Wai.Handler.Warp     (setPort,defaultSettings)
 import           Network.Wai.Handler.WarpTLS
 import           Protolude                  hiding(to,get)
 import           Servant.Server
+import           Servant.API
+import           Servant.Utils.StaticFiles    (serveDirectory)
 --------------------------------------------------------------------------
 
 main :: IO ()
@@ -23,7 +25,7 @@ main = do raw_conf  <- decode.toSL <$> readFile conf_file
                             runTLS tls setttings
                                  . debuging 
                                  . serve api 
-                                 $ server db conf
+                                 $ server db conf :<|> serveDirectory "./static"
  where
 
     conf_file  = "conf/public.json"

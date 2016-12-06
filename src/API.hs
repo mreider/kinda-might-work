@@ -48,12 +48,13 @@ type KindaMightWork_API = WithSession "kmw_session"
                            :<|>  RemoveWunder
                            :<|>  SyncTrelloWunder
                            :<|>  IndexPage
-                           )     
+                           )
 
 
 -- TODO: use redirects for post
 -- TODO: use redirects for Oauth loggin
 -- TODO: pages should indicate the opration result
+-- TODO: add the xsfr
 type GoogleCallback     = "go-clb" :> QueryParam "code"       Text
                                    :> Get        '[HTML]      WebPage
                                    --  :> Get Redirect home
@@ -88,7 +89,7 @@ type IndexPage          =             Get        '[HTML]      WebPage
 data Redirec -- TODO: Implement 
 
 
-api :: Proxy (KindaMightWork_API)
+api :: Proxy (KindaMightWork_API :<|> Raw)
 api = Proxy
 
 

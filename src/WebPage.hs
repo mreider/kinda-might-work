@@ -31,8 +31,6 @@ urlToLog OAuthCred{..} t  = toSL $ exportURL URL
                                              ]
                               }
 
-
-
 --------------------------------------------------------------------------------------------------------------------
 --------------------------------------------------------------------------------------------------------------------
 
@@ -49,7 +47,14 @@ instance ToHtml WebPage where
                   meta_ [name_    "google-site-verification", content_ verification]
                   meta_ [charset_ "UTF-8"]
                   meta_ [title_   "Kinda Might Work" ]
-                
+                  
+                  case innerPage of
+                    Nothing            -> ""
+                    Just InnerPage{..} -> do script_ [src_  "https://code.jquery.com/jquery-1.7.1.min.js"] (""::Text)
+                                             script_ [src_$ "https://api.trello.com/1/client.js?key="<> _clientId trello_conf] (""::Text)
+                                             script_ [src_  "/trelloAuth.js"] (""::Text)
+
+                                                                
                 body_ body
 
       urlToAction :: (Monad m) => Text -> HtmlT m () -> HtmlT m ()
@@ -72,14 +77,16 @@ instance ToHtml WebPage where
                                                  "( "<> urlToAction "/go-out" "log out" <> " )"
 
                                         br_ []
-                                        
+
                                         if trelloAccount
                                           then p_ [] $ do 
                                                 "Your trello acount is linked ("
                                                 urlToAction' "/tr-out" "unlink"
                                                 ") "
 
-                                          else urlTolog' trello_conf "link your trello account"
+                                          else a_ [ onclick_ "authenticateTrello()"
+                                                  ] 
+                                                  "link your trello account"
 
                                         br_ []
 
@@ -111,3 +118,6 @@ instance ToHtml WebPage where
                                            | otherwise    -> p_  [] $ do 
                                                             "Currently we detect nothing out of sync, "
                                                             "press F5 to check again."
+
+
+

@@ -29,6 +29,7 @@ server db creds session =    callback (set withGoogle) _googleCred
                         :<|> remove WuList
                         :<|> syncTrelloWunder
                         :<|> indexPage
+                        
   where
 
     callback :: (FromJSON r) => ( Maybe r -> PartialProfile -> PartialProfile)

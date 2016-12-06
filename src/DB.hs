@@ -41,8 +41,6 @@ Subscription
    kind          Service
    account       EmailId  -- Foerign Key
    token         Text
-   refreshToken  Text     -- TODO remove
-   expires       UTCTime  -- TODO remove
    Primary       account  kind
    deriving      Show Eq Ord Read Generic
 |]
