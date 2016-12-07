@@ -21,81 +21,69 @@ import           Synchro
 -- or call this module PersistenceLogic? or similar?
 
 -- TODO: remove this even if it makes a bit less efficient, it is not worth it
-data PartialProfile = PartialProfile
-      { _withGoogle :: Maybe GoogleProfile
-      , _withTrello :: Maybe TrelloProfile
-      , _withWuList :: Maybe WuListProfile
-      } deriving (Show,Read,Eq)
 -- TODO, make a prism instead of a lens
+
+type PartialProfile = Either GoogleProfile (Either TrelloProfile WuListProfile)
+
+withGoogle :: GoogleProfile -> PartialProfile 
+withGoogle = Left
+
+withTrello :: TrelloProfile -> PartialProfile 
+withTrello = Right . Left
+
+withWuList :: WuListProfile -> PartialProfile 
+withWuList = Right  . Right
 
 type Profile       = Maybe ( GoogleProfile
                            , Maybe TrelloProfile
                            , Maybe WuListProfile
+                           , [(Text,Board)]
                            )
-$(makeLenses ''PartialProfile)
+
+
+getProfile    :: (MonadIO io) => DB ->  Session -> Creds          -> io Profile
+getProfile db s  creds = transaction db $ do traverse extractProfiles =<< extractGoogle s
+   where
+    extractProfiles :: (GoogleProfile,EmailId) -> Transaction (GoogleProfile, Maybe TrelloProfile, Maybe WuListProfile, [(Text,Board)])
+    extractProfiles (prof,key) = do mayTrello <- fmap (TrelloProfile . subscriptionToken) <$> get (SubscriptionKey key Trello)
+                                    mayWulist <- fmap (WuListProfile . subscriptionToken) <$> get (SubscriptionKey key WuList)
+                                    maySync   <- case (mayTrello,mayWulist) of
+                                                   (Just trello, Just wulist) -> getBoards creds trello wulist
+                                                   _                          -> return []
+
+                                    return (prof,mayTrello,mayWulist,maySync)
 
 
 
--- TODO: refactor
--- TODO: to its own module...
--- TODO: better comments...
-getUpdateProfile :: (MonadIO io) => DB
-                                 -> Creds
-                                 -> Session
-                                 -> PartialProfile
-                                 -> io Profile
-getUpdateProfile db creds s p = transaction db $ do 
+syncProfile   :: (MonadIO io) => DB ->  Session -> Creds          -> io ()
+syncProfile   = undefined
+
+updateProfile :: (MonadIO io) => DB ->  Session -> PartialProfile -> io ()
+updateProfile db s p = transaction db $ case p of
+
+                        Left (GoogleProfile email name) -> do repsert (EmailKey email) (Email name)
+                                                              repsert (LinkKey  s)     (Link $ EmailKey email)
+
+                        Right p' -> do result <- extractGoogle s
+                                       case result of
+                                        Nothing    -> return ()
+
+                                        Just (_,k) -> let serv = either (const Trello)     (const WuList)     p'
+                                                          code = either _trelloAccessToken _wuListAccessToken p'
+                                                       
+                                                       in repsert (SubscriptionKey k serv) $ Subscription serv k code  
 
 
-      mayProf <- case _withGoogle of
-        
-                Nothing   -> extractGoogle 
-        
-                Just prof -> do updateGoogle prof
-                                return $ Just (prof,EmailKey $ email prof)
-      case mayProf of
+extractGoogle  :: Session -> Transaction (Maybe (GoogleProfile,EmailId))
+extractGoogle s = runMaybeT
+                 $ do Link  kEmail <- MaybeT $ get (LinkKey s)
+                      Email name   <- MaybeT $ get kEmail
+                      
+                      return ( GoogleProfile (unEmailKey kEmail)
+                                             name
+                             , kEmail
+                             )
 
-        Nothing        -> return Nothing
-        
-        Just (prof, k) -> do mayTrello <- return Nothing
-                             
-                             mayWuList <- updateService WuListProfile k WuList (_wuListAccessToken<$>_withWuList)
-                             
-                             return $ Just ( prof
-                                           , mayTrello
-                                           , mayWuList
-                                           )
-  where
-    
-    extractGoogle  :: Transaction (Maybe (GoogleProfile,EmailId))
-    extractGoogle = runMaybeT
-                   $ do Link  kEmail <- MaybeT $ get (LinkKey s)
-                        Email name   <- MaybeT $ get kEmail
-                        
-                        return ( GoogleProfile (unEmailKey kEmail)
-                                               name
-                               , kEmail
-                               )
-
-    updateService :: (Text -> a) -> EmailId -> Service -> Maybe Text
-                    -> Transaction (Maybe a)
-
-    updateService cons k serv may = case may of
-                                     Nothing    -> fmap (cons.subscriptionToken) <$> get key
-                                     Just tok   -> do repsert key (Subscription serv k tok)
-                                                      return $ Just (cons tok)
-         where
-          key = SubscriptionKey k serv
-
-
-
-
-    updateGoogle   :: GoogleProfile -> Transaction ()
-    updateGoogle  (GoogleProfile email name) = do repsert (EmailKey email) (Email name)
-                                                  repsert (LinkKey  s)     (Link $ EmailKey email)
-
-
-    PartialProfile{..} = p
 
 removeService    :: (MonadIO io) => DB -> Session -> Service -> io ()
 removeService db s serv = transaction db

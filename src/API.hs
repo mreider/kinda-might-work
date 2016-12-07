@@ -8,7 +8,8 @@ import           Servant
 import           Servant.HTML.Lucid
 import           Protolude
 import           Data.Aeson
-
+import           Redirect
+import           Synchro
 ---------------------------------------------
 -- TODO: Take this imports out
 import           Conf
@@ -56,32 +57,24 @@ type KindaMightWork_API = WithSession "kmw_session"
 -- TODO: pages should indicate the opration result
 -- TODO: add the xsfr
 type GoogleCallback     = "go-clb" :> QueryParam "code"       Text
-                                   :> Get        '[HTML]      WebPage
-                                   --  :> Get Redirect home
+                                   :> IndexRedirect
 
 type TrelloCallback     = "tr-clb" :> QueryParam "code"       Text
-                                   :> Get        '[HTML]      WebPage
-                                   --  :> Get Redirect home
+                                   :> IndexRedirect
 
 type WuListCallback     = "wl-clb" :> QueryParam "code"       Text
-                                   :> Get        '[HTML]      WebPage
-                                   --  :> Get Redirect home
+                                   :> IndexRedirect
 
--- TODO: use post when needed, use redirect
-type LogOut             = "go-out" :> Get        '[HTML]      WebPage
-                                   -- :> type Redirect home
+type LogOut             = "go-out" :> IndexRedirect
 
 type RemoveTrello       = "tr-out" :> Capture    "csfr-token" TokenCSFR
-                                   :> Get        '[HTML]      WebPage
-                                   -- :> Post Redirect home
+                                   :> IndexRedirect
 
 type RemoveWunder       = "wl-out" :> Capture    "csfr-token" TokenCSFR
-                                   :> Get        '[HTML]      WebPage
-                                   -- :> Post Redirect home
+                                   :> IndexRedirect
 
 type SyncTrelloWunder   = "sync"   :> Capture    "csfr-token" TokenCSFR
-                                   :> Get        '[HTML]      WebPage
-                                   -- :> Post Redirect home
+                                   :> IndexRedirect
 
 type IndexPage          =             Get        '[HTML]      WebPage   
 ---------------------------------------------------------------------------
@@ -118,22 +111,23 @@ data InnerPage = InnerPage
       , trello_conf   :: OAuthCred
       , wuList_conf   :: OAuthCred
       , userEmail     :: Text
-      , outOfSync     :: [Text]
+      , outOfSync     :: [(Text,Board)]
       }
 
 
-webPage :: TokenCSFR -> Creds -> Profile -> WebPage
-webPage token Creds{..} prof =  WebPage{ google_conf  = _googleCred 
-                                       , verification = _siteVerification
-                                       , csrf_token   = token
-                                       , ..
-                                       }
+webPage :: TokenCSFR -> Creds -> Profile ->  WebPage
+webPage token Creds{..} prof  =  WebPage{ google_conf  = _googleCred 
+                                        , verification = _siteVerification
+                                        , csrf_token   = token
+                                        , ..
+                                        }
    where
     innerPage = case prof of
 
                  Just ( GoogleProfile{..}
                       , trello
-                      , wuList 
+                      , wuList
+                      , outOfSync 
                       )             -> Just $ InnerPage
                                          { userName      = name
                                          , trelloAccount = isJust trello
@@ -141,7 +135,7 @@ webPage token Creds{..} prof =  WebPage{ google_conf  = _googleCred
                                          , trello_conf   = _trelloCred  
                                          , wuList_conf   = _wuListCred 
                                          , userEmail     = email
-                                         , outOfSync     = []
+                                         , ..
                                          }
 
                  Nothing                  -> Nothing

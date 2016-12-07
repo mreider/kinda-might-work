@@ -26,6 +26,7 @@ executable kinda-might-work-exe
                      , Profile
                      , Server
                      , Synchro
+                     , Redirect
                      , TokenCSFR 
                      , WebPage
 

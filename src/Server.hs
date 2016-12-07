@@ -21,58 +21,59 @@ import           Control.Lens
 
 ---------------------------------------------------------------------------
 server :: DB -> Creds -> Server KindaMightWork_API
-server db creds session =    callback (set withGoogle) _googleCred
-                        :<|> callback (set withTrello) _trelloCred
-                        :<|> callback (set withWuList) _wuListCred 
-                        :<|> (loggingOut db session >> generatePage Nothing)
+server db creds session =    callback  withGoogle _googleCred
+                        :<|> callback' withTrello
+                        :<|> callback  withWuList _wuListCred 
+                        :<|> (loggingOut db session)
                         :<|> remove Trello
                         :<|> remove WuList
                         :<|> syncTrelloWunder
-                        :<|> indexPage
                         
+                        :<|> indexPage
+
   where
 
-    callback :: (FromJSON r) => ( Maybe r -> PartialProfile -> PartialProfile)
+    -- TODO: update and get profile different!
+
+    callback' :: (TrelloProfile -> PartialProfile)
+              -> Maybe Text
+              -> ExceptT ServantErr IO ()
+    
+    callback' setter = \case
+                         Just c  -> do updateProfile db session $ setter (TrelloProfile c)
+                                       return ()
+                           
+                         Nothing -> return ()
+
+
+
+    callback :: (FromJSON r,Show r) => ( r -> PartialProfile)
                              -> (Creds  -> OAuthCred)
                              -> Maybe Text
-                             -> ExceptT ServantErr IO WebPage
+                             -> ExceptT ServantErr IO ()
     
     callback setter getter = \case
-                               Just c  -> do permision <- postCode (getter creds) c
-                                             profile   <- updateProfile  session $ partial permision
-                                             generatePage profile
+                               Just c  -> updateProfile db session . setter =<< postCode (getter creds) c
+
                                
-                               Nothing -> indexPage
-      where
-        partial x = setter (Just x) blankProfile
+                               Nothing -> return ()
+
 
     generatePage     = return . webPage (csfrChallenge (_csfrSecret creds) session) creds
     
 
     remove  service csfr = do checkTokenCSFR    session creds csfr
                               removeService  db session service
-                              indexPage
                                
     
+    -- TODO: it should parametrize which board to sync..
     syncTrelloWunder  csfr = do checkTokenCSFR session creds csfr
-                                profile <- updateProfile session blankProfile
-                                case profile of
-                                  Just ( _
-                                       , Just trello 
-                                       , Just wuList
-                                       )             -> syncTrelloWuList creds 
-                                                                         trello wuList
-                                  Nothing            -> return () -- not logged
+                                syncProfile db session creds
 
-                                generatePage profile
 
-    indexPage        = do profile <- updateProfile session blankProfile
+
+    indexPage        = do profile <- getProfile db session creds
                           generatePage profile
-
-    blankProfile     = PartialProfile Nothing Nothing Nothing
-    
-    updateProfile    = getUpdateProfile db creds
-
 
 
 -- TODO: implement

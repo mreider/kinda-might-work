@@ -15,7 +15,7 @@ import           Control.Lens
 import           Data.Aeson
 import           Orphan.UUID
 import           Network.URL -- to use
-
+import           Synchro
 
 urlToLog :: OAuthCred -> TokenCSFR -> Text
 urlToLog OAuthCred{..} t  = toSL $ exportURL URL
@@ -25,7 +25,7 @@ urlToLog OAuthCred{..} t  = toSL $ exportURL URL
                                              , ("response_type" , "code"            )
                                              , ("client_id"     , toSL _clientId    )
                                              , ("state"         , show t            )
-                                            -- , ("prompt"        , "consent"         ) -- only while debugging
+                                             , ("prompt"        , "consent"         ) -- only while debugging
                                              , ("scope"         , toSL _scope       )
                                              , ("access_type"   , "offline"         )
                                              ]
@@ -64,7 +64,6 @@ instance ToHtml WebPage where
 
       urlTolog'    cred     = a_ [href_ $ urlToLog    cred      csrf_token]
 
-
       body = case innerPage of
               
               Nothing             -> do h3_ "Kinda Might Work:"
@@ -84,8 +83,9 @@ instance ToHtml WebPage where
                                                 urlToAction' "/tr-out" "unlink"
                                                 ") "
 
-                                          else a_ [ onclick_ "authenticateTrello()"
-                                                  ] 
+                                          else a_ [ onclick_ $ "authenticateTrello('"<> show csrf_token <>"')"
+                                                  , href_    "#"
+                                                  ]
                                                   "link your trello account"
 
                                         br_ []
@@ -109,15 +109,18 @@ instance ToHtml WebPage where
                                                              "Wunderlist account to sync."
 
                                            | somthingToDo -> p_  [] $ do 
-                                                            "The follogin will be link: "
+                                                            "Ready to be sync'ed: "
                                                             ul_ [] $ sequence_  
-                                                               [ toHtml stuff
+                                                               [ li_ (renderSync stuff)
                                                                | stuff <- outOfSync
                                                                ]
+                                                            "Already sync'ed: "
 
+                                        -- TODO: show what could be read
                                            | otherwise    -> p_  [] $ do 
                                                             "Currently we detect nothing out of sync, "
                                                             "press F5 to check again."
 
-
+               
+      renderSync (name,Board lists) = p_ ("Board name: "<>toHtml name)
 

@@ -1,7 +1,10 @@
 
 
-var authenticationSuccess = function(x){ 
-      //window.location = 'tr-clb?code='+x+'&state=';
+var authenticationSuccess = function(state){
+
+      return function(){
+            window.location = '/tr-clb?code='+Trello.token()+'&state='+state;
+      }
 };
 
 
@@ -10,7 +13,7 @@ var authenticationFailure = function(y){
 };
 
 
-function authenticateTrello(){
+function authenticateTrello(state){
 
   Trello.authorize({ type: 'popup'
                    , name: 'Kinda might work'
@@ -19,7 +22,7 @@ function authenticateTrello(){
                             , write: 'true' 
                             }
                    , expiration: 'never'
-                   , success: authenticationSuccess
+                   , success: authenticationSuccess(state)
                    , error: authenticationFailure
                    }
                   );

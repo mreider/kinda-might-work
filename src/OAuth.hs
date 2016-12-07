@@ -25,7 +25,7 @@ data GoogleProfile = GoogleProfile
       } deriving(Show,Read,Eq,Ord,Generic) 
 
 data TrelloProfile = TrelloProfile
-      { 
+      { _trelloAccessToken :: Text
       } deriving(Show,Read,Eq,Ord,Generic,ToJSON,FromJSON)
 
 data WuListProfile = WuListProfile
@@ -59,23 +59,6 @@ postCode' OAuthCred{..} code = try $ post (toSL _verifyURL)
                                       ]
 
 
-
-
---Right 
---  ( Response { responseStatus = Status {statusCode = 200, statusMessage = "OK"}
---             , responseVersion = HTTP/1.1
---             , responseHeaders = [ ("Content-Type","application/json; charset=utf-8")
---                                 , ("Date","Mon, 05 Dec 2016 16:32:01 GMT")
---                                 , ("Server","lastbalanserare")
---                                 , ("Set-Cookie","_wl=38L_TLzWQKLqgsmpoX6tjA.d1U62LauMjUEct95otwNTzimE2hHF9sm4irs2l0dm0XN7VlGfaTyTqQsmvMheH98r5VG9QvQ2QmiheIPMQaY3A.1480955521114.7776000000.f5CyB1KMwPGlpb41480Ir_7jBE9W12uz2-FoBHqc8Ak; path=/; expires=Sun, 05 Mar 2017 16:32:02 GMT; secure; httponly")
---                                 , ("Strict-Transport-Security","max-age=31536000")
---                                 , ("X-Xss-Protection","1; mode=block")
---                                 , ("Content-Length","79")
---                                 , ("Connection","keep-alive")
---                                 ]
---             , responseBody = "{\"access_token\":\"0761797b665e46409637483f6c7cbf7978028bcb2546c3c60574c81ad0fa\"}"
---           }
---  )
 
 
 instance FromJSON GoogleProfile where
