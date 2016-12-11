@@ -74,6 +74,7 @@ type RemoveWunder       = "wl-out" :> Capture    "csfr-token" TokenCSFR
                                    :> IndexRedirect
 
 type SyncTrelloWunder   = "sync"   :> Capture    "csfr-token" TokenCSFR
+                                   :> QueryParams"board"      Text
                                    :> IndexRedirect
 
 type IndexPage          =             Get        '[HTML]      WebPage   
@@ -111,7 +112,7 @@ data InnerPage = InnerPage
       , trello_conf   :: OAuthCred
       , wuList_conf   :: OAuthCred
       , userEmail     :: Text
-      , outOfSync     :: [(Text,Board)]
+      , outOfSync     :: [(Text,SyncOptions)]
       }
 
 

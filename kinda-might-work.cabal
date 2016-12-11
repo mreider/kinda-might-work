@@ -89,7 +89,6 @@ executable kinda-might-work-exe
                      , FunctionalDependencies
                      , GADTs
                      , LambdaCase
-                     , MonadComprehensions
                      , MultiParamTypeClasses
                      , MultiWayIf
                      , NoImplicitPrelude

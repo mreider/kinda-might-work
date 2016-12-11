@@ -101,26 +101,42 @@ instance ToHtml WebPage where
                                         br_ []
 
                                         let ready        = wuListAccount && trelloAccount
-                                            somthingToDo = not (null outOfSync)
 
                                         h4_ "Click to Sync!"
-                                        if | not ready    -> p_ [] $ do 
-                                                             "You need to link your Trello and "
-                                                             "Wunderlist account to sync."
+                                        if not ready 
+                                          then p_ [] $ do "You need to link your Trello and "
+                                                          "Wunderlist account to sync."
 
-                                           | somthingToDo -> p_  [] $ do 
-                                                            "Ready to be sync'ed: "
-                                                            ul_ [] $ sequence_  
-                                                               [ li_ (renderSync stuff)
-                                                               | stuff <- outOfSync
-                                                               ]
-                                                            "Already sync'ed: "
+                                          else toSyncForm outOfSync
+                                          
 
-                                        -- TODO: show what could be read
-                                           | otherwise    -> p_  [] $ do 
-                                                            "Currently we detect nothing out of sync, "
-                                                            "press F5 to check again."
 
-               
-      renderSync (name,Board lists) = p_ ("Board name: "<>toHtml name)
+      toSyncForm  :: (Monad m) => [(Text,SyncOptions)] -> HtmlT m ()
+      toSyncForm fields        = form_ [action_ "/sync", method_ "get"] $ do
+                                  fieldset_ $ do
+                                    legend_ "Boards to syncrhonize"
+                                    
+                                    let toRetrieve = [ (name,ref) 
+                                                     | (name,ToRetrieve ref _) <- fields
+                                                     ]
+                                    sequence_ 
+                                       [ do input_ [type_ "checkbox", name_"board", value_ ref]
+                                            p_ $ toHtml (show name :: Text)
+                                            br_ []
 
+                                       | (name,ref) <- toRetrieve
+                                       ] 
+
+                                    br_ []
+                                    if null toRetrieve
+                                      then h4_ "Everything sync'ed, press F5 to check again."
+                                      else input_ [type_ "submit",value_ "sync selected boards"]
+                                  
+                                  fieldset_ $ do
+                                    legend_ "Already on sync'ed:"
+                                    sequence_ 
+                                       [ do p_ $ toHtml (show name :: Text)
+                                            br_ []
+                                            
+                                       | (name,AlreadySync) <- fields
+                                       ]

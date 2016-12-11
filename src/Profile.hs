@@ -13,7 +13,7 @@ import           Control.Monad.Trans.Maybe
 import           Data.Aeson
 import           Database.Persist
 import           Protolude          hiding (get)
-import           Synchro
+import           Synchro            -- TODO: do not call that from here
 -- TODO: use better names and explain what each module do!
 -- Maybe call this module "Account"??
 -- use tha neme account somewhere
@@ -34,29 +34,52 @@ withTrello = Right . Left
 withWuList :: WuListProfile -> PartialProfile 
 withWuList = Right  . Right
 
+-- TODO: remove
+-- TODO: do not name profiles but `Authotization`
 type Profile       = Maybe ( GoogleProfile
                            , Maybe TrelloProfile
                            , Maybe WuListProfile
-                           , [(Text,Board)]
+                           , [(Text,SyncOptions)]
                            )
 
+type BasicProfile  = Maybe ( GoogleProfile
+                           , Maybe TrelloProfile
+                           , Maybe WuListProfile
+                           )
 
+-- TODO: do not use
 getProfile    :: (MonadIO io) => DB ->  Session -> Creds          -> io Profile
-getProfile db s  creds = transaction db $ do traverse extractProfiles =<< extractGoogle s
+getProfile db s  creds = do result <- getBasicProfile db s  creds
+                            case result of
+                              Just (g, Just t, Just w) -> do bs <- getBoards creds t w
+                                                             return $ Just (g, Just t, Just w, bs)
+                              
+                              Just (g, t     , w)      -> do return $ Just (g, t     , w     , [])
+
+                              Nothing                  -> do return Nothing
+
+
+getAuthorization :: (MonadIO io) => DB ->  Session -> Creds          -> io (Maybe (TrelloProfile,WuListProfile))
+getAuthorization db s creds = do result <- getBasicProfile db s  creds
+                                 case result of
+                                    Just (g, Just t, Just w) -> return $ Just (t,w)
+                                    _                        -> return Nothing 
+
+syncProfile :: (MonadIO io) => DB -> Session -> Creds -> [Text] -> io ()
+syncProfile  db s creds boards = do auth <- getAuthorization db s creds
+                                    case auth of
+                                     Just (t,w) -> syncBoards creds t w boards
+                                     Nothing    -> return ()
+
+-- TODO: remove this and getProfile
+getBasicProfile :: (MonadIO io) => DB ->  Session -> Creds          -> io BasicProfile
+getBasicProfile db s  creds = transaction db $ traverse extractProfiles =<< extractGoogle s
    where
-    extractProfiles :: (GoogleProfile,EmailId) -> Transaction (GoogleProfile, Maybe TrelloProfile, Maybe WuListProfile, [(Text,Board)])
     extractProfiles (prof,key) = do mayTrello <- fmap (TrelloProfile . subscriptionToken) <$> get (SubscriptionKey key Trello)
                                     mayWulist <- fmap (WuListProfile . subscriptionToken) <$> get (SubscriptionKey key WuList)
-                                    maySync   <- case (mayTrello,mayWulist) of
-                                                   (Just trello, Just wulist) -> getBoards creds trello wulist
-                                                   _                          -> return []
 
-                                    return (prof,mayTrello,mayWulist,maySync)
+                                    return (prof,mayTrello,mayWulist)
 
-
-
-syncProfile   :: (MonadIO io) => DB ->  Session -> Creds          -> io ()
-syncProfile   = undefined
 
 updateProfile :: (MonadIO io) => DB ->  Session -> PartialProfile -> io ()
 updateProfile db s p = transaction db $ case p of

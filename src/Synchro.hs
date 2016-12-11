@@ -24,18 +24,6 @@ import           Control.Concurrent.MVar
 import           Network.HTTP.Client.TLS    (tlsManagerSettings)
 import           Network.HTTP.Client        (newManager,Manager)
 
-data RawBoard = RawBoard
-      { rbName :: Text
-      , rbId   :: Text
-      }deriving(Show,Eq,Ord,Generic,Read)
-
-
-data RawCard  = RawCard
-      { rcName  :: Text
-      , rcId    :: Text
-      }deriving(Show,Eq,Ord,Generic,Read) 
-
-
 data Card  = Card
       { cName       :: Text
       , cId         :: Text
@@ -55,6 +43,141 @@ data List      = List
       , lTasks     :: Map Text RawTask
       }deriving(Show,Eq,Ord,Generic,Read)
 
+data SyncOptions = ToRetrieve     Text (Maybe Text)
+                 | AlreadySync
+                 deriving(Show,Eq,Ord,Generic,Read)
+
+-------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------
+getBoards :: (MonadIO io) => Creds -> TrelloProfile -> WuListProfile -> io [(Text, SyncOptions)]
+getBoards creds trello wulist  = runSyncM creds trello wulist True 
+                               $ getBoardsSync
+
+
+syncBoards :: (MonadIO io) => Creds -> TrelloProfile -> WuListProfile -> [Text] -> io ()
+syncBoards creds trello wulist = runSyncM creds trello wulist False
+                               . void 
+                               . mapSyncConcurrently synchronize
+
+
+getBoardsSync :: SyncM [(Text, SyncOptions)]
+getBoardsSync = do rawBoards <- trello_get "/members/me/boards"
+                   mapSyncConcurrently step rawBoards
+  where
+    step :: RawBoard -> SyncM (Text, SyncOptions)
+    step RawBoard{..} = do result <- (Right<$>synchronize rbId) `catchError` (return . Left)
+
+                           let syncOpt = case result of
+                                          Left RequiredSync  -> ToRetrieve rbId Nothing
+                                          Left (Problem err) -> ToRetrieve rbId (Just err)
+                                          Right _            -> AlreadySync
+
+                           return (rbName,syncOpt)
+
+
+-- TODO: add the global manager.
+-- TODO: use safe exception here!
+runSyncM :: (MonadIO io) => Creds -> TrelloProfile -> WuListProfile -> Bool -> SyncM a -> io a
+runSyncM Creds{..} 
+         TrelloProfile{..}
+         WuListProfile{..}
+         mode     action   = do result <- liftIO rawAction
+                                case result of
+                                  Right x  -> return x
+                                  Left err -> error  $ show err -- use something else!
+   where
+       rawAction = do logger  <- newEmptyMVar
+                      manager <- newManager tlsManagerSettings
+                      let conf = ConfM{ smTrelloClientId = _clientId _trelloCred
+                                      , smWulistClientId = _clientId _wuListCred
+                                      , smTrelloToken    = _trelloAccessToken
+                                      , smWulistToken    = _wuListAccessToken
+                                      , smOnlyCheck      = mode
+                                      , smPrecedence     = preference
+                                      , smLogger         = putMVar logger
+                                      , smManager        = manager
+                                      }
+                      
+                      forkIO . forever
+                             $ do out <- takeMVar logger
+                                  putStrLn out
+                      
+                      t0     <- liftIO getCurrentTime
+                      result <- runReaderT (runExceptT action) conf
+                      t1     <- liftIO getCurrentTime
+                      putMVar logger . show $ diffUTCTime t1 t0 -- mesuring the time it needs to complete
+                      return result
+
+       groupPreference :: [Text]
+       groupPreference = [ "to-do"          -- ^ most prefered, first
+                         , "doing"
+                         , "review"
+                         , "done"
+                         , "discovered"     -- ^ last
+                         ]
+
+       preference :: Text -> Int
+       preference = let n       = length groupPreference
+                        prefMap = fromList $ zip groupPreference [0..]
+                    
+                     in \label -> fromMaybe n $ lookup label prefMap
+
+
+
+--exampleRun :: Bool -> SyncM a -> IO (Either Shortcut a)
+--exampleRun mode action = do logger  <- newEmptyMVar
+--                            manager <- newManager tlsManagerSettings
+--                            let conf = ConfM{ smTrelloClientId = "2e997d720d84f2af062fe52de5ab1ba6"
+--                                            , smWulistClientId = "e9809daeab1b8e680395"
+--                                            , smTrelloToken    = "05241c988e4ed3dfda92b35cc8c769b856a0ac956a152e62c9daa518c860657a"
+--                                            , smWulistToken    = "43796a0dcff8ccff27b8f61a5856002bd169f9f809efed3de286886b1343"
+--                                            , smOnlyCheck      = mode
+--                                            , smPrecedence     = preference
+--                                            , smLogger         = putMVar logger
+--                                            , smManager        = manager
+--                                            }
+                            
+--                            forkIO . forever
+--                                   $ do out <- takeMVar logger
+--                                        putStrLn out
+                            
+--                            t0 <- liftIO getCurrentTime
+--                            result <- runReaderT (runExceptT action) conf
+--                            t1 <- liftIO getCurrentTime
+--                            putMVar logger . show $ diffUTCTime t1 t0 -- mesuring the time it needs to complete
+--                            return result
+--   where
+--    groupPreference :: [Text]
+--    groupPreference = [ "to-do"          -- ^ most prefered, first
+--                      , "doing"
+--                      , "review"
+--                      , "done"
+--                      , "discovered"     -- ^ last
+--                      ]
+
+--    preference :: Text -> Int
+--    preference = let n       = length groupPreference
+--                     prefMap = fromList $ zip groupPreference [0..]
+                  
+--                  in \label -> fromMaybe n $ lookup label prefMap
+
+
+
+-------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------
+
+
+data RawBoard = RawBoard
+      { rbName :: Text
+      , rbId   :: Text
+      }deriving(Show,Eq,Ord,Generic,Read)
+
+
+data RawCard  = RawCard
+      { rcName  :: Text
+      , rcId    :: Text
+      }deriving(Show,Eq,Ord,Generic,Read)
+
 data RawList = RawList
       { rlName     :: Text
       , rlId       :: Integer
@@ -72,23 +195,12 @@ data RawGroup = RawGroup
       , rgCards    :: [RawCard]
       }deriving(Show,Eq,Ord,Generic,Read)
 
--- TODO: fetch all at once?
 data RawPosition = RawPosition
      { rpIndexes   :: [Integer]
      , rpRevision  :: Integer
      , rpId        :: Integer
      }deriving(Show,Eq,Ord,Generic,Read)
 
-
---data Board = Board [(Text, Map Text Card)] 
---           deriving(Show,Eq,Ord,Generic,Read)
-
---data Card  = Card
---       { name        :: Text
---       , comments    :: [Text]
---       , description :: Text
---       , tasks       :: [(Bool,Text)]
---       } deriving(Show,Eq,Ord,Generic,Read)
 
 instance FromJSON RawGroup where
   parseJSON obj = maybe (fail $ "Could not parsed: "<> toSL(encode obj)) return
@@ -178,45 +290,6 @@ mapSyncConcurrently f = foldr step (return [])
    where
     step x acc = do (x',acc') <- syncConcurrently (f x) acc
                     return (x':acc')
-
-exampleRun :: Bool -> SyncM a -> IO (Either Shortcut a)
-exampleRun mode action = do logger  <- newEmptyMVar
-                            manager <- newManager tlsManagerSettings
-                            let conf = ConfM{ smTrelloClientId = "2e997d720d84f2af062fe52de5ab1ba6"
-                                            , smWulistClientId = "e9809daeab1b8e680395"
-                                            , smTrelloToken    = "05241c988e4ed3dfda92b35cc8c769b856a0ac956a152e62c9daa518c860657a"
-                                            , smWulistToken    = "43796a0dcff8ccff27b8f61a5856002bd169f9f809efed3de286886b1343"
-                                            , smOnlyCheck      = mode
-                                            , smPrecedence     = preference
-                                            , smLogger         = putMVar logger
-                                            , smManager        = manager
-                                            }
-                            
-                            forkIO . forever
-                                   $ do out <- takeMVar logger
-                                        putStrLn out
-                            
-                            t0 <- liftIO getCurrentTime
-                            result <- runReaderT (runExceptT action) conf
-                            t1 <- liftIO getCurrentTime
-                            print $ diffUTCTime t1 t0 -- mesuring the time it needs to complete
-                            return result
-   where
-    groupPreference :: [Text]
-    groupPreference = [ "to-do"          -- ^ most prefered, first
-                      , "doing"
-                      , "review"
-                      , "done"
-                      , "discovered"     -- ^ last
-                      ]
-
-    preference :: Text -> Int
-    preference = let n       = length groupPreference
-                     prefMap = fromList $ zip groupPreference [0..]
-                  
-                  in \label -> fromMaybe n $ lookup label prefMap
--- 8 sec more or less...
--- 30 to 40 sec
 
 -- Operations todo:
 -- "557ea811c7a27e98211655b1"
@@ -415,18 +488,4 @@ wulist_payload method
                               note (Problem . toSL $"could not decode response after: " <>endpoint)
                                  $ resp ^? responseBody . key "id" . _Integer
 
-
-
-
-
---syncTrelloWuList :: (MonadIO io) => Creds -> TrelloProfile -> WuListProfile -> io ()
---syncTrelloWuList = error "error at syncTrelloWuList"
-
-
---trelloSubscription :: (MonadIO io) => Creds -> Subscription -> io (Maybe TrelloProfile)
---trelloSubscription = error "error at trelloSubscription"
-
-
---wuListSubscription :: (MonadIO io) => Creds -> Subscription -> io (Maybe WuListProfile)
---wuListSubscription = error "error at wuListSubscription"
 
