@@ -21,6 +21,8 @@ import           OAuth
 import           Protolude                  hiding(get,to, (&))
 import qualified Data.Text        as T
 import           Control.Concurrent.MVar
+import           Network.HTTP.Client.TLS    (tlsManagerSettings)
+import           Network.HTTP.Client        (newManager,Manager)
 
 data RawBoard = RawBoard
       { rbName :: Text
@@ -148,6 +150,7 @@ data ConfM    = ConfM
       , smOnlyCheck      :: Bool
       , smPrecedence     :: Text -> Int
       , smLogger         :: Text -> IO ()
+      , smManager        :: Manager
       }
 
 toLog :: Text -> SyncM ()
@@ -177,7 +180,8 @@ mapSyncConcurrently f = foldr step (return [])
                     return (x':acc')
 
 exampleRun :: Bool -> SyncM a -> IO (Either Shortcut a)
-exampleRun mode action = do logger <- newEmptyMVar
+exampleRun mode action = do logger  <- newEmptyMVar
+                            manager <- newManager tlsManagerSettings
                             let conf = ConfM{ smTrelloClientId = "2e997d720d84f2af062fe52de5ab1ba6"
                                             , smWulistClientId = "e9809daeab1b8e680395"
                                             , smTrelloToken    = "05241c988e4ed3dfda92b35cc8c769b856a0ac956a152e62c9daa518c860657a"
@@ -185,6 +189,7 @@ exampleRun mode action = do logger <- newEmptyMVar
                                             , smOnlyCheck      = mode
                                             , smPrecedence     = preference
                                             , smLogger         = putMVar logger
+                                            , smManager        = manager
                                             }
                             
                             forkIO . forever
@@ -350,11 +355,13 @@ synchronize boardId = do (board,lists)  <- syncConcurrently (getBoard boardId) g
 trello_get :: (FromJSON a)=> Text -> SyncM a
 trello_get endpoint = do ConfM{..} <- ask
                          describe ("On trello endpoint: "<> endpoint)
-                           $ get . toSL $ "https://api.trello.com/1" <> endpoint 
-                                        <>"?key="                    <> smTrelloClientId
-                                        <>"&token="                  <> smTrelloToken
-                                        <>"&cards=open&card_fields=name"
-
+                           $ getWith ( defaults & manager .~ Right smManager
+                                     ) 
+                                     ( toSL $ "https://api.trello.com/1" <> endpoint 
+                                            <>"?key="                    <> smTrelloClientId
+                                            <>"&token="                  <> smTrelloToken
+                                            <>"&cards=open&card_fields=name"
+                                     )
 
 wulist_get :: (FromJSON a)=> Text -> SyncM a
 wulist_get  endpoint = do ConfM{..} <- ask
@@ -363,6 +370,7 @@ wulist_get  endpoint = do ConfM{..} <- ask
                                             [ ("X-Access-Token", toSL smWulistToken    )
                                             , ("X-Client-ID"   , toSL smWulistClientId )
                                             ]
+                                           & manager .~ Right smManager 
                                       )
                                       ( toSL $ "https://a.wunderlist.com/api/v1" <> endpoint
                                       )
@@ -397,6 +405,7 @@ wulist_payload method
                                                         [ ("X-Access-Token", toSL smWulistToken    )
                                                         , ("X-Client-ID"   , toSL smWulistClientId )
                                                         ]
+                                                             & manager .~ Right smManager
                                                    )
                                                    ( toSL $ "https://a.wunderlist.com/api/v1" <> endpoint
                                                    )

@@ -40,6 +40,8 @@ executable kinda-might-work-exe
                      , containers
                      , cookie
                      , http-api-data
+                     , http-client
+                     , http-client-tls
                      , http-types
                      , lens
                      , lens-aeson
