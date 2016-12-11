@@ -6,6 +6,7 @@ module Synchro where
 
 
 import           Conf
+import           Control.Concurrent.Async
 import           Control.Lens               hiding((.=),List)
 import           Control.Monad.Fail
 import           Control.Monad.Trans.Except
@@ -13,11 +14,13 @@ import           Control.Monad.Trans.Reader hiding(ask)
 import           Data.Aeson
 import           Data.Aeson.Lens
 import           Data.Map                   hiding(foldr, toList)
+import           Data.Time
 import           DB
 import           Network.Wreq
 import           OAuth
 import           Protolude                  hiding(get,to, (&))
 import qualified Data.Text        as T
+import           Control.Concurrent.MVar
 
 data RawBoard = RawBoard
       { rbName :: Text
@@ -124,6 +127,11 @@ instance FromJSON RawList where
 -- | A custom monad to compute symcronization
 type SyncM =  ExceptT Shortcut (ReaderT ConfM IO)
 
+-- IO (ConfM -> Either Shortcut a)
+
+-- ReaderT ConfM IO (Either Shortcut a)
+-- ConfM -> IO (Either Shortcut a)
+
 -- | A computation shortcut, aka, stop computing the monad because:
 data Shortcut = Problem Text -- ^ An unexpect problem occured.
 
@@ -138,39 +146,80 @@ data ConfM    = ConfM
       , smTrelloToken    :: Text
       , smWulistToken    :: Text
       , smOnlyCheck      :: Bool
-      }deriving(Show,Eq,Read)
+      , smPrecedence     :: Text -> Int
+      , smLogger         :: Text -> IO ()
+      }
 
+toLog :: Text -> SyncM ()
+toLog t = do ConfM{..} <- ask
+             liftIO $ smLogger t
 
-groupPreference :: [Text]
-groupPreference = [ "to-do"          -- ^ most prefered, first
-                  , "doing"
-                  , "review"
-                  , "done"
-                  , "discovered"     -- ^ last
-                  ]
+syncConcurrently :: SyncM a -> SyncM b -> SyncM (a, b) 
+syncConcurrently actionA actionB = ExceptT . ReaderT $ syncConcurrently_
+  where
+    syncConcurrently_ conf = do (a,b) <- concurrently (actionA_ conf) (actionB_ conf)
+                                return $ (,) <$> a <*> b
+    
+    actionA_               = runReaderT $ runExceptT actionA
+    actionB_               = runReaderT $ runExceptT actionB
 
-preference :: Text -> Int
-preference = let n       = length groupPreference
-                 prefMap = fromList $ zip groupPreference [0..]
-              
-              in \label -> fromMaybe n $ lookup label prefMap
+    -- | Drops all wrappers from the monad
+    unwrapp :: SyncM b -> ConfM -> IO (Either Shortcut b)
+    unwrapp =  runReaderT . runExceptT
 
+    wrap    :: (ConfM -> IO (Either Shortcut b)) -> SyncM b
+    wrap    =  ExceptT . ReaderT
+
+mapSyncConcurrently :: (a -> SyncM b) -> [a] -> SyncM [b]
+mapSyncConcurrently f = foldr step (return [])
+   where
+    step x acc = do (x',acc') <- syncConcurrently (f x) acc
+                    return (x':acc')
 
 exampleRun :: Bool -> SyncM a -> IO (Either Shortcut a)
-exampleRun mode action = do let conf = ConfM{ smTrelloClientId = "2e997d720d84f2af062fe52de5ab1ba6"
+exampleRun mode action = do logger <- newEmptyMVar
+                            let conf = ConfM{ smTrelloClientId = "2e997d720d84f2af062fe52de5ab1ba6"
                                             , smWulistClientId = "e9809daeab1b8e680395"
                                             , smTrelloToken    = "05241c988e4ed3dfda92b35cc8c769b856a0ac956a152e62c9daa518c860657a"
                                             , smWulistToken    = "43796a0dcff8ccff27b8f61a5856002bd169f9f809efed3de286886b1343"
                                             , smOnlyCheck      = mode
+                                            , smPrecedence     = preference
+                                            , smLogger         = putMVar logger
                                             }
-                            runReaderT (runExceptT action) conf
+                            
+                            forkIO . forever
+                                   $ do out <- takeMVar logger
+                                        putStrLn out
+                            
+                            t0 <- liftIO getCurrentTime
+                            result <- runReaderT (runExceptT action) conf
+                            t1 <- liftIO getCurrentTime
+                            print $ diffUTCTime t1 t0 -- mesuring the time it needs to complete
+                            return result
+   where
+    groupPreference :: [Text]
+    groupPreference = [ "to-do"          -- ^ most prefered, first
+                      , "doing"
+                      , "review"
+                      , "done"
+                      , "discovered"     -- ^ last
+                      ]
+
+    preference :: Text -> Int
+    preference = let n       = length groupPreference
+                     prefMap = fromList $ zip groupPreference [0..]
+                  
+                  in \label -> fromMaybe n $ lookup label prefMap
+-- 8 sec more or less...
+-- 30 to 40 sec
 
 -- Operations todo:
 -- "557ea811c7a27e98211655b1"
 getBoard :: Text -> SyncM Board
 getBoard boardId = do RawBoard name id <- trello_get $ "/boards/" <> boardId
                       groups           <- trello_get $ "/boards/" <> boardId <> "/lists"
-                      return $ Board name id [ Card rcName rcId (preference rgName) 
+                      ConfM{..}        <- ask
+                      return $ Board name id [ Card rcName rcId (smPrecedence rgName) 
                                              | RawGroup{..} <- groups
                                              , RawCard{..}  <- rgCards 
                                              ]
@@ -183,7 +232,8 @@ getAllLists = do rLists <- wulist_get "/lists"
                                            , Just id       <- [fromNameId rtName]
                                            ]
                  
-                 sequence [ do tasks     <- wulist_get ("/tasks?list_id=" <> show i)                               
+                 mapSyncConcurrently identity
+                          [ do tasks     <- wulist_get ("/tasks?list_id=" <> show i)                               
                                return $ List n i r (mapTask tasks)
 
                           | RawList n i r <- rLists
@@ -211,15 +261,19 @@ synchList b@Board{..} = \case
                        Just List{..} -> do let req  = object [ "title"    .= newName
                                                              , "revision" .= lRevision
                                                              ]
-
+                                           -- we can not do this part on parallel, cause
+                                           -- if we end up updating a task before the list, it would
+                                           -- change it revision. 
                                            when (newName /= lName) . void
                                                  $ wulist_patch ("/lists/"<> show lId) req
                                            
+                                           -- we can not do this part parallel either
                                            syncPosition  lId . fromList =<< synchAllTasks lId bCards lTasks
 
   where
     
-    synchAllTasks parent cards tasks = sequence [ synchTask parent c $ lookup (cId c) tasks 
+    synchAllTasks parent cards tasks = mapSyncConcurrently identity
+                                                [ synchTask parent c $ lookup (cId c) tasks 
                                                 | c <- cards
                                                 ]
 
@@ -288,8 +342,7 @@ idFromTittle List{..} = fromNameId lName
 
 
 synchronize :: Text -> SyncM ()
-synchronize boardId = do board <- getBoard boardId
-                         lists  <- getSyncLists
+synchronize boardId = do (board,lists)  <- syncConcurrently (getBoard boardId) getSyncLists
                          synchList board $ lookup (bId board) lists
 
 --------------------------------------------------------------------------------------------
@@ -315,7 +368,7 @@ wulist_get  endpoint = do ConfM{..} <- ask
                                       )
 
 describe ::(FromJSON a) => Text -> IO (Response LByteString) -> SyncM a
-describe descr action = do print descr
+describe descr action = do toLog descr
                            result <- liftIO action
                            case eitherDecode $ view responseBody result of
                             Right a   -> return a
@@ -334,7 +387,11 @@ wulist_payload :: (ToJSON a)=> [Char] -> Text -> a -> SyncM Integer
 wulist_payload method 
                endpoint 
                obj       = do ConfM{..} <- ask
-                              print ("Posting oon wunderlist:" <>endpoint)
+                              toLog ("Posting oon wunderlist:" <>endpoint)
+                              
+                              when smOnlyCheck
+                                 $ throwError  RequiredSync
+
                               resp <- liftIO $ customPayloadMethodWith method 
                                                   ( defaults & headers <>~ 
                                                         [ ("X-Access-Token", toSL smWulistToken    )
@@ -349,54 +406,9 @@ wulist_payload method
                               note (Problem . toSL $"could not decode response after: " <>endpoint)
                                  $ resp ^? responseBody . key "id" . _Integer
 
-{-
-data ConfM    = ConfM
-      { smTrelloClientId :: Text
-      , smWulistClientId :: Text
-      , smTrelloToken    :: Text
-      , smWulistToken    :: Text
-      , smOnlyCheck      :: Bool
-      }deriving(Show,Eq,Read)
-
--}
 
 
 
-
--- /member/me/boards
--- 
---getBoards     :: (MonadIO io) => Creds -> TrelloProfile -> WuListProfile -> io [(Text,Board)]
---getBoards Creds{..}  
---          (TrelloProfile trelloT)  
---          (WuListProfile wulistT) = do boardWuList  <- getFromWunder _wuListCred wulistT 
---                                       boardTrello  <- getFromTrello _trelloCred trelloT
---                                       return boardTrello
-
----- TODO: use the actual path...
---getFromTrello :: (MonadIO io) => OAuthCred -> Text -> io [(Text,Board)]
---getFromTrello OAuthCred{..} token = liftIO
---                                  $ do resp <- get . toSL $ "https://api.trello.com/1/members/me/boards?key="
---                                                          <> _clientId <>"&token=" <> token
-                                       
---                                       return $ resp ^.. responseBody 
---                                                       . values
---                                                       . key "name" 
---                                                       . _String
---                                                       . to (flip (,) $ Board [])
-
---getFromWunder :: (MonadIO io) => OAuthCred -> Text -> io [(Text,Board)]
---getFromWunder  OAuthCred{..} token = do liftIO $ print =<< action
---                                        return []
---    where
---      action = getWith ( defaults & headers <>~ 
---                            [ ("X-Access-Token", toSL token     )
---                            , ("X-Client-ID"   , toSL _clientId )
---                            ]
---                       ) 
---                       "https://a.wunderlist.com/api/v1/user"
-
--- 3aeaa876277ca228218313f1c9f8dbc81617358fb3747177c894331cce2e
--- 
 
 --syncTrelloWuList :: (MonadIO io) => Creds -> TrelloProfile -> WuListProfile -> io ()
 --syncTrelloWuList = error "error at syncTrelloWuList"

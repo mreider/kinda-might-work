@@ -37,6 +37,7 @@ data Creds = Creds
       , _googleCred       :: OAuthCred
       , _trelloCred       :: OAuthCred
       , _wuListCred       :: OAuthCred
+      , _groupPrecedence  :: [Text]
       } deriving(Show,Eq,Ord,Read,Generic,FromJSON,ToJSON)
 
 
