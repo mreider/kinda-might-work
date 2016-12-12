@@ -381,21 +381,37 @@ synchTask parent Card{..} = \case
   where
     newName = toTaskNameId cGroup cName cId
 
+    getComments :: SyncM [Text]
+    getComments = do raws <- trello_get $ "/cards/"<>cId<>"/actions" :: SyncM [Value]
+                     return [ comment
+                            | r             <- raws
+                            , "commentCard" <- r   ^.. key "type" . _String
+                            , obj           <- r   ^.. key "data"
+                            , comment       <- obj ^.. key "text" . _String
+                            ]
+
     createNewTask :: SyncM Integer 
     createNewTask = do let req = object [ "title"    .= newName
                                         , "list_id"  .= parent
                                         ]
 
-                       id <- wulist_post "/tasks" req
+                       (id,comments) <- syncConcurrently (wulist_post "/tasks" req)
+                                        getComments         
                        
-                       when (not $ T.all isSpace cDesc) 
-                          . void
-                          . wulist_post "/task_comments" 
-                          $ object [ "task_id" .= id
-                                   , "text"    .= ("[[DESCRIPTION]]" <> cDesc)
-                                   ]
+                       let notes   = if not $ T.all isSpace cDesc
+                                      then ("[[DESCRIPTION]]" <> cDesc) : comments
+                                      else comments
+
+                           post t  = wulist_post "/task_comments"
+                                        $ object [ "task_id" .= id
+                                                 , "text"    .= t
+                                                 ]
+                       
+                       -- TODO: we do not need to wait for the result...
+                       mapSyncConcurrently post notes
+
                        return id
-                       -- 
+-- 
 -- NOTICE:
 -- Wunderlist is not consistent with its api result, there are read-after-write
 -- issues, a.k.a, if something is read after it had recently changed, the read might
