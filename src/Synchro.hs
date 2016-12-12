@@ -27,7 +27,8 @@ import           Network.HTTP.Client        (newManager,Manager)
 data Card  = Card
       { cName       :: Text
       , cId         :: Text
-      , cPreference :: Int 
+      , cPreference :: Int
+      , cGroup      :: Text
       }deriving(Show,Eq,Ord,Generic,Read)
 
 data Board     = Board
@@ -298,7 +299,7 @@ getBoard :: Text -> SyncM Board
 getBoard boardId = do RawBoard name id <- trello_get $ "/boards/" <> boardId
                       groups           <- trello_get $ "/boards/" <> boardId <> "/lists"
                       ConfM{..}        <- ask
-                      return $ Board name id [ Card rcName rcId (smPrecedence rgName) 
+                      return $ Board name id [ Card rcName rcId (smPrecedence rgName) rgName 
                                              | RawGroup{..} <- groups
                                              , RawCard{..}  <- rgCards 
                                              ]
@@ -378,7 +379,7 @@ synchTask parent Card{..} = \case
 
                                                       return (cPreference,rtId)
   where
-    newName = toNameId cName cId
+    newName = toTaskNameId cGroup cName cId
 
 -- NOTICE:
 -- Wunderlist is not consistent with its api result, there are read-after-write
@@ -402,7 +403,12 @@ syncPosition  lId taskPreference = do RawPosition{..} <- wulist_get ("/task_posi
 
 toNameId   :: Text -> Text -> Text
 toNameId name id = name <> "[["<>id<>"]]"
-  
+
+toTaskNameId   :: Text -> Text -> Text -> Text
+toTaskNameId groupName name taskId = "{{ "<> groupName<> " }}  " 
+                                   <> name 
+                                   <> "[["<>taskId<>"]]"
+
 fromNameId :: Text -> Maybe Text
 fromNameId name 
      | _: id_ : _  <- T.splitOn "[[" name

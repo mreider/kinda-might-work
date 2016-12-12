@@ -133,6 +133,8 @@ instance ToHtml WebPage where
                                       then h4_ "Everything sync'ed, press F5 to check again."
                                       else input_ [type_ "submit",value_ "sync selected boards"]
                                   
+                                  br_ []
+                                  
                                   fieldset_ $ do
                                     legend_ "Already sync'ed:"
                                     
