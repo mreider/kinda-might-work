@@ -55,9 +55,10 @@ getBoards creds trello wulist  = runSyncM creds trello wulist True
 
 
 syncBoards :: (MonadIO io) => Creds -> TrelloProfile -> WuListProfile -> [Text] -> io ()
-syncBoards creds trello wulist = runSyncM creds trello wulist False
-                               . void 
-                               . mapSyncConcurrently synchronize
+syncBoards creds trello wulist bIds = do print ("selected to sync:",bIds)
+                                         runSyncM creds trello wulist False
+                                          . void 
+                                          $ mapSyncConcurrently synchronize bIds
 
 
 getBoardsSync :: SyncM [(Text, SyncOptions)]
@@ -346,7 +347,7 @@ synchList b@Board{..} = \case
                                                  $ wulist_patch ("/lists/"<> show lId) req
                                            
                                            -- we can not do this part parallel either
-                                           syncPosition  lId . fromList =<< synchAllTasks lId bCards lTasks
+                                           syncPosition  lId =<< synchAllTasks lId bCards lTasks
 
   where
     
@@ -358,14 +359,15 @@ synchList b@Board{..} = \case
     newName = toNameId bName bId
 
 
-synchTask :: Integer -> Card -> Maybe RawTask -> SyncM (Integer,Int)
+synchTask :: Integer -> Card -> Maybe RawTask -> SyncM (Int,Integer)
 synchTask parent Card{..} = \case
                                Nothing          -> do let req  = object [ "title"    .= newName
                                                                         , "list_id"  .= parent
                                                                         ]
 
                                                       newId <- wulist_post "/tasks" req
-                                                      return (newId, cPreference)
+                                                      toLog $ "new tasks: "<> show newId
+                                                      return (cPreference,newId)
 
                                Just RawTask{..} -> do let req  = object [ "title"    .= newName
                                                                         , "revision" .= rtRevision
@@ -374,35 +376,29 @@ synchTask parent Card{..} = \case
                                                       when (newName /= rtName) . void
                                                           $ wulist_patch ("/tasks/"<> show rtId) req
 
-                                                      return (rtId, cPreference)
+                                                      return (cPreference,rtId)
   where
     newName = toNameId cName cId
 
+-- NOTICE:
+-- Wunderlist is not consistent with its api result, there are read-after-write
+-- issues, a.k.a, if something is read after it had recently changed, the read might
+-- not observe the change.
 
-syncPosition :: Integer -> Map Integer Int -> SyncM ()
+syncPosition :: Integer -> [(Int,Integer)] -> SyncM ()
 syncPosition  lId taskPreference = do RawPosition{..} <- wulist_get ("/task_positions/"<> show lId)
                                       
-                                      let rpIndexes'  = prefSort rpIndexes
+                                      let rpIndexes'  = snd<$>sort taskPreference
                                           req         = object [ "revision" .= rpRevision
                                                                , "values"   .= rpIndexes'
                                                                ]
 
+                                      toLog $ show rpIndexes
+                                      toLog $ show rpIndexes'
+                                      toLog $ show (rpIndexes'==rpIndexes)
                                       when (rpIndexes /= rpIndexes') . void
                                         $ wulist_patch ("/task_positions/" <> show rpId) req
-  where
-   prefSort :: [Integer] -> [Integer]
-   prefSort old = let (monitored, free) = partitionEithers 
-                                          [ case lookup n taskPreference of
-                                              Nothing    -> Right n
-                                              Just pref  -> Left  (pref,n)
-                                          
-                                          | n <- old
-                                          ]
 
-                   in (snd<$>sort monitored) ++ free
-
-
---    syncPosition i tasks    
 
 toNameId   :: Text -> Text -> Text
 toNameId name id = name <> "[["<>id<>"]]"

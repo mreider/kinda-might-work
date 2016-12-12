@@ -108,24 +108,25 @@ instance ToHtml WebPage where
                                                           "Wunderlist account to sync."
 
                                           else toSyncForm outOfSync
-                                          
+
 
 
       toSyncForm  :: (Monad m) => [(Text,SyncOptions)] -> HtmlT m ()
-      toSyncForm fields        = form_ [action_ "/sync", method_ "get"] $ do
+      toSyncForm fields        = form_ [action_ $"/sync/"<>show csrf_token, method_ "post"] $ do
                                   fieldset_ $ do
                                     legend_ "Boards to syncrhonize"
                                     
                                     let toRetrieve = [ (name,ref) 
                                                      | (name,ToRetrieve ref _) <- fields
                                                      ]
-                                    sequence_ 
-                                       [ do input_ [type_ "checkbox", name_"board", value_ ref]
-                                            p_ $ toHtml (show name :: Text)
-                                            br_ []
+                                    ul_ $
+                                      sequence_    
+                                           [ li_ [] $ do 
+                                                input_ [type_ "checkbox", name_"board", value_ ref]
+                                                toHtml (show name :: Text)
 
-                                       | (name,ref) <- toRetrieve
-                                       ] 
+                                           | (name,ref) <- toRetrieve
+                                           ] 
 
                                     br_ []
                                     if null toRetrieve
@@ -133,10 +134,13 @@ instance ToHtml WebPage where
                                       else input_ [type_ "submit",value_ "sync selected boards"]
                                   
                                   fieldset_ $ do
-                                    legend_ "Already on sync'ed:"
-                                    sequence_ 
-                                       [ do p_ $ toHtml (show name :: Text)
-                                            br_ []
-                                            
-                                       | (name,AlreadySync) <- fields
-                                       ]
+                                    legend_ "Already sync'ed:"
+                                    
+                                    ul_ $
+                                      sequence_ 
+                                         [ li_ [] $ do 
+                                              p_ $ toHtml (show name :: Text)
+                                              br_ []
+                                              
+                                         | (name,AlreadySync) <- fields
+                                         ]

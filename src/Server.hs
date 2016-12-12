@@ -67,8 +67,8 @@ server db creds session =    callback  withGoogle _googleCred
                                
     
     -- TODO: it should parametrize which board to sync..
-    syncTrelloWunder  csfr boards = do checkTokenCSFR session creds csfr
-                                       syncProfile db session creds boards
+    syncTrelloWunder  csfr (OurForm boards) = do checkTokenCSFR session creds csfr
+                                                 syncProfile db session creds boards
 
 
 

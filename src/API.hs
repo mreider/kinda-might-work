@@ -73,8 +73,8 @@ type RemoveTrello       = "tr-out" :> Capture    "csfr-token" TokenCSFR
 type RemoveWunder       = "wl-out" :> Capture    "csfr-token" TokenCSFR
                                    :> IndexRedirect
 
-type SyncTrelloWunder   = "sync"   :> Capture    "csfr-token" TokenCSFR
-                                   :> QueryParams"board"      Text
+type SyncTrelloWunder   = "sync"   :> Capture    "csfr-token"      TokenCSFR
+                                   :> ReqBody    '[FormUrlEncoded] OurForm
                                    :> IndexRedirect
 
 type IndexPage          =             Get        '[HTML]      WebPage   
@@ -82,6 +82,10 @@ type IndexPage          =             Get        '[HTML]      WebPage
 
 data Redirec -- TODO: Implement 
 
+newtype OurForm = OurForm  [Text]
+
+instance FromFormUrlEncoded OurForm where
+  fromFormUrlEncoded keyVals = Right . OurForm $ snd <$> keyVals 
 
 api :: Proxy (KindaMightWork_API :<|> Raw)
 api = Proxy

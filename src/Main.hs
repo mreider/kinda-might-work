@@ -23,7 +23,6 @@ main = do raw_conf  <- decode.toSL <$> readFile conf_file
             
             Just conf -> do db <- getDB $ _postgresConn conf
                             runTLS tls setttings
-                                 . debuging 
                                  . serve api 
                                  $ server db conf :<|> serveDirectory "./static"
  where
@@ -33,10 +32,4 @@ main = do raw_conf  <- decode.toSL <$> readFile conf_file
     tls       = tlsSettings "conf/app.crt" "conf/app.key"
     setttings = defaultSettings & setPort port
     port      = 443
-
-
-debuging :: Application -> Application
-debuging app req cont = do print req 
-                           putStrLn ("\n------------------------------------------------------\n"::Text)
-                           app req cont
 
