@@ -70,7 +70,7 @@ instance ToHtml WebPage where
                                         p_  "Get your Trello and WunderList accounts on sync!"
                                         urlTolog' google_conf "log with google to continue" 
               
-              Just InnerPage{..}  -> do h3_ $ "Wellcome " <> toHtml userName <> " !!"
+              Just InnerPage{..}  -> do h3_ $ "Welcome " <> toHtml userName <> " !!"
                                         p_  $ do "Using accounts for email: "   
                                                  strong_ (toHtml userEmail) 
                                                  "( "<> urlToAction "/go-out" "log out" <> " )"

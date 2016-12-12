@@ -18,8 +18,7 @@ import           Data.Char                  (isSpace)
 import           Data.Map                   hiding(foldr, toList)
 import           Data.Time
 import           DB
-import           Network.HTTP.Client        (newManager,Manager)
-import           Network.HTTP.Client.TLS    (tlsManagerSettings)
+import           Network.HTTP.Client        (Manager)
 import           Network.Wreq
 import           OAuth
 import           Protolude                  hiding(get,to, (&))
@@ -52,16 +51,16 @@ data SyncOptions = ToRetrieve     Text (Maybe Text)
 
 -------------------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------------------
-getBoards :: (MonadIO io) => Creds -> TrelloProfile -> WuListProfile -> io [(Text, SyncOptions)]
-getBoards creds trello wulist  = runSyncM creds trello wulist True 
-                               $ getBoardsSync
+getBoards :: (MonadIO io) => Manager -> Creds -> TrelloProfile -> WuListProfile -> io [(Text, SyncOptions)]
+getBoards client creds trello wulist  = runSyncM creds trello wulist client True 
+                                      $ getBoardsSync
 
 
-syncBoards :: (MonadIO io) => Creds -> TrelloProfile -> WuListProfile -> [Text] -> io ()
-syncBoards creds trello wulist bIds = do print ("selected to sync:",bIds)
-                                         runSyncM creds trello wulist False
-                                          . void 
-                                          $ mapSyncConcurrently synchronize bIds
+syncBoards :: (MonadIO io) => Manager -> Creds -> TrelloProfile -> WuListProfile -> [Text] -> io ()
+syncBoards client  creds trello wulist bIds = do print ("selected to sync:",bIds)
+                                                 runSyncM creds trello wulist client False
+                                                   . void 
+                                                   $ mapSyncConcurrently synchronize bIds
 
 
 getBoardsSync :: SyncM [(Text, SyncOptions)]
@@ -81,91 +80,33 @@ getBoardsSync = do rawBoards <- trello_get "/members/me/boards"
 
 -- TODO: add the global manager.
 -- TODO: use safe exception here!
-runSyncM :: (MonadIO io) => Creds -> TrelloProfile -> WuListProfile -> Bool -> SyncM a -> io a
+runSyncM :: (MonadIO io) => Creds -> TrelloProfile -> WuListProfile -> Manager -> Bool -> SyncM a -> io a
 runSyncM Creds{..} 
          TrelloProfile{..}
          WuListProfile{..}
-         mode     action   = do result <- liftIO rawAction
+         manager 
+         mode action       = do result <- liftIO rawAction
                                 case result of
                                   Right x  -> return x
                                   Left err -> error  $ show err -- use something else!
    where
        rawAction = do logger  <- newEmptyMVar
-                      manager <- newManager tlsManagerSettings
                       let conf = ConfM{ smTrelloClientId = _clientId _trelloCred
                                       , smWulistClientId = _clientId _wuListCred
                                       , smTrelloToken    = _trelloAccessToken
                                       , smWulistToken    = _wuListAccessToken
                                       , smOnlyCheck      = mode
                                       , smPrecedence     = preference
-                                      , smLogger         = putMVar logger
+                                      , smLogger         = void . return -- no logging
                                       , smManager        = manager
                                       }
-                      
-                      forkIO . forever
-                             $ do out <- takeMVar logger
-                                  putStrLn out
-                      
-                      t0     <- liftIO getCurrentTime
-                      result <- runReaderT (runExceptT action) conf
-                      t1     <- liftIO getCurrentTime
-                      putMVar logger . show $ diffUTCTime t1 t0 -- mesuring the time it needs to complete
-                      return result
-
-       groupPreference :: [Text]
-       groupPreference = [ "to-do"          -- ^ most prefered, first
-                         , "doing"
-                         , "review"
-                         , "done"
-                         , "discovered"     -- ^ last
-                         ]
+                      runReaderT (runExceptT action) conf
 
        preference :: Text -> Int
-       preference = let n       = length groupPreference
-                        prefMap = fromList $ zip groupPreference [0..]
+       preference = let n       = length _groupPrecedence
+                        prefMap = fromList $ zip _groupPrecedence [0..]
                     
                      in \label -> fromMaybe n $ lookup label prefMap
-
-
-
-exampleRun :: Bool -> SyncM a -> IO (Either Shortcut a)
-exampleRun mode action = do logger  <- newEmptyMVar
-                            manager <- newManager tlsManagerSettings
-                            let conf = ConfM{ smTrelloClientId = "2e997d720d84f2af062fe52de5ab1ba6"
-                                            , smWulistClientId = "e9809daeab1b8e680395"
-                                            , smTrelloToken    = "05241c988e4ed3dfda92b35cc8c769b856a0ac956a152e62c9daa518c860657a"
-                                            , smWulistToken    = "43796a0dcff8ccff27b8f61a5856002bd169f9f809efed3de286886b1343"
-                                            , smOnlyCheck      = mode
-                                            , smPrecedence     = preference
-                                            , smLogger         = putMVar logger
-                                            , smManager        = manager
-                                            }
-                            
-                            forkIO . forever
-                                   $ do out <- takeMVar logger
-                                        putStrLn out
-                            
-                            t0 <- liftIO getCurrentTime
-                            result <- runReaderT (runExceptT action) conf
-                            t1 <- liftIO getCurrentTime
-                            putMVar logger . show $ diffUTCTime t1 t0 -- mesuring the time it needs to complete
-                            return result
-   where
-    groupPreference :: [Text]
-    groupPreference = [ "to-do"          -- ^ most prefered, first
-                      , "doing"
-                      , "review"
-                      , "done"
-                      , "discovered"     -- ^ last
-                      ]
-
-    preference :: Text -> Int
-    preference = let n       = length groupPreference
-                     prefMap = fromList $ zip groupPreference [0..]
-                  
-                  in \label -> fromMaybe n $ lookup label prefMap
-
-
 
 -------------------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------------------

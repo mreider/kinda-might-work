@@ -14,6 +14,8 @@ import           Control.Lens
 import           Data.Aeson
 import           Data.UUID
 import           DB
+import           Network.HTTP.Client        (newManager,Manager)
+import           Network.HTTP.Client.TLS    (tlsManagerSettings)
 import           Network.Wai                  (Application)
 import           Network.Wai.Handler.Warp     (setPort,defaultSettings)
 import           Network.Wai.Handler.WarpTLS
@@ -29,10 +31,11 @@ main = do raw_conf  <- runExceptT configuration
 
             Left ServantErr{..} -> putStrLn errBody
             
-            Right conf          -> do db <- getDB $ _postgresConn conf
+            Right conf          -> do db     <- getDB $ _postgresConn conf
+                                      client <- newManager tlsManagerSettings
                                       runTLS tls setttings
                                           . serve api 
-                                          $ server db :<|> serveDirectory "./static"
+                                          $ server db client :<|> serveDirectory "./static"
  where
 
     tls       = tlsSettings "conf/app.crt" "conf/app.key"
@@ -43,16 +46,16 @@ main = do raw_conf  <- runExceptT configuration
 
 
 ---------------------------------------------------------------------------
-server :: DB -> Server KindaMightWork_API
-server db session =    callback  withGoogle _googleCred
-                  :<|> callback' withTrello
-                  :<|> callback  withWuList _wuListCred 
-                  :<|> (loggingOut db session)
-                  :<|> remove Trello
-                  :<|> remove WuList
-                  :<|> syncTrelloWunder
-                  
-                  :<|> indexPage
+server :: DB -> Manager -> Server KindaMightWork_API
+server db client session =    callback  withGoogle _googleCred
+                         :<|> callback' withTrello
+                         :<|> callback  withWuList _wuListCred 
+                         :<|> (loggingOut db session)
+                         :<|> remove Trello
+                         :<|> remove WuList
+                         :<|> syncTrelloWunder
+                          
+                         :<|> indexPage
 
   where
 
@@ -95,12 +98,12 @@ server db session =    callback  withGoogle _googleCred
     -- TODO: it should parametrize which board to sync..
     syncTrelloWunder  csfr (OurForm boards) = do creds   <- configuration
                                                  checkTokenCSFR session creds csfr
-                                                 syncProfile db session creds boards
+                                                 syncProfile client db session creds boards
 
 
 
     indexPage        = do creds   <- configuration
-                          profile <- getProfile db session creds
+                          profile <- getProfile client db session creds
                           generatePage creds profile
 
 

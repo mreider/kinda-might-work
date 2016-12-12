@@ -14,6 +14,8 @@ import           Data.Aeson
 import           Database.Persist
 import           Protolude          hiding (get)
 import           Synchro            -- TODO: do not call that from here
+import           Network.HTTP.Client        (Manager)
+
 -- TODO: use better names and explain what each module do!
 -- Maybe call this module "Account"??
 -- use tha neme account somewhere
@@ -48,10 +50,11 @@ type BasicProfile  = Maybe ( GoogleProfile
                            )
 
 -- TODO: do not use
-getProfile    :: (MonadIO io) => DB ->  Session -> Creds          -> io Profile
-getProfile db s  creds = do result <- getBasicProfile db s  creds
+getProfile    :: (MonadIO io) => Manager -> DB ->  Session -> Creds          -> io Profile
+getProfile client 
+           db s  creds = do result <- getBasicProfile db s  creds
                             case result of
-                              Just (g, Just t, Just w) -> do bs <- getBoards creds t w
+                              Just (g, Just t, Just w) -> do bs <- getBoards client creds t w
                                                              return $ Just (g, Just t, Just w, bs)
                               
                               Just (g, t     , w)      -> do return $ Just (g, t     , w     , [])
@@ -65,11 +68,11 @@ getAuthorization db s creds = do result <- getBasicProfile db s  creds
                                     Just (g, Just t, Just w) -> return $ Just (t,w)
                                     _                        -> return Nothing 
 
-syncProfile :: (MonadIO io) => DB -> Session -> Creds -> [Text] -> io ()
-syncProfile  db s creds boards = do auth <- getAuthorization db s creds
-                                    case auth of
-                                     Just (t,w) -> syncBoards creds t w boards
-                                     Nothing    -> return ()
+syncProfile :: (MonadIO io) => Manager -> DB -> Session -> Creds -> [Text] -> io ()
+syncProfile client db s creds boards = do auth <- getAuthorization db s creds
+                                          case auth of
+                                           Just (t,w) -> syncBoards client creds t w boards
+                                           Nothing    -> return ()
 
 -- TODO: remove this and getProfile
 getBasicProfile :: (MonadIO io) => DB ->  Session -> Creds          -> io BasicProfile
