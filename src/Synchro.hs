@@ -305,11 +305,11 @@ synchList b@Board{..} = \case
     newName = toNameId bName bId
 
 
-synchTask :: Integer -> Card -> Maybe RawTask -> SyncM (Int,Integer)
+synchTask :: Integer -> Card -> Maybe RawTask -> SyncM ((Int,Text),Integer)
 synchTask parent Card{..} = \case
                                Nothing          -> do newId <- createNewTask 
                                                       toLog $ "new tasks: "<> show newId
-                                                      return (cPreference,newId)
+                                                      return ((cPreference,cId),newId)
 
                                Just RawTask{..} -> do let req  = object [ "title"    .= newName
                                                                         , "revision" .= rtRevision
@@ -318,7 +318,7 @@ synchTask parent Card{..} = \case
                                                       when (newName /= rtName) . void
                                                           $ wulist_patch ("/tasks/"<> show rtId) req
 
-                                                      return (cPreference,rtId)
+                                                      return ((cPreference,cId),rtId)
   where
     newName = toTaskNameId cGroup cName cId
 
@@ -358,7 +358,7 @@ synchTask parent Card{..} = \case
 -- issues, a.k.a, if something is read after it had recently changed, the read might
 -- not observe the change.
 
-syncPosition :: Integer -> [(Int,Integer)] -> SyncM ()
+syncPosition :: Integer -> [((Int,Text),Integer)] -> SyncM ()
 syncPosition  lId taskPreference = do RawPosition{..} <- wulist_get ("/task_positions/"<> show lId)
                                       
                                       let rpIndexes'  = snd<$>sort taskPreference

@@ -55,17 +55,14 @@ postCode' OAuthCred{..} code = try $ post (toSL _verifyURL)
                                       , "client_secret" := _secret
                                       , "scope"         := _scope
                                       , "grant_type"    := ("authorization_code" :: Text)
-                                      , "access_type"   := ("online"             :: Text) -- we just need the email once and we are done.
+                                      , "access_type"   := ("offline"            :: Text) -- we just need the email once and we are done.
                                       ]
-
-
-
 
 instance FromJSON GoogleProfile where
   
 
   parseJSON obj = let profile = do  t     <- obj ^? key "id_token" . _String
-                                    t'    <- rightToMaybe . B.decode . toSL 
+                                    let t' = B.decodeLenient . toSL 
                                            . T.takeWhile (/='.') . T.drop 1 . T.dropWhile (/='.')
                                            $ t
 
